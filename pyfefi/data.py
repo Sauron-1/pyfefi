@@ -164,6 +164,23 @@ class Config:
         return 'field'
 
     def pqw(self, slices=None, data_type='float32'):
+        """
+        Return the coordinates in curvilinear coordinate system.
+
+        Parameters
+        ----------
+        slices : tuple of slice objects, optional
+            The slices to apply on the coordinates. If not given, will
+            return all coordinates.
+
+        data_type : str, optional
+            The data type of the returned coordinates. Default is 'float32'.
+
+        Returns
+        -------
+        p, q, w : tuple of 1D np.ndarray
+            The coordinates in curvilinear coordinate system.
+        """
         if slices is None:
             slices = Slice[:, :, :]
         lims = self.coord.convert_limits(self.limits)
@@ -173,6 +190,23 @@ class Config:
         return coords
 
     def calc_xyz(self, slices, data_type='float32'):
+        """
+        Calculate the coordinates in Cartesian coordinate system of the
+        grid points. For most cases, you should use `to_xyz` instead.
+
+        Parameters
+        ----------
+        slices : tuple of slice objects
+            The slices to apply on the coordinates.
+
+        data_type : str, optional
+            The data type of the returned coordinates. Default is 'float32'.
+
+        Returns
+        -------
+        X, Y, Z : tuple of 3D np.ndarray
+            The coordinates in Cartesian coordinate system.
+        """
         lims = self.coord.convert_limits(self.limits)
         plim, qlim, wlim = lims
         ps = np.linspace(*plim, self.grid_size[0], dtype=np.dtype(data_type))
@@ -190,7 +224,7 @@ class Config:
             Z = Z[slices]
         return X, Y, Z
 
-    def try_load_xyz(self, slices):
+    def _try_load_xyz(self, slices):
         if os.path.exists(os.path.join(self.path, 'grid.npz')):
             data = np.load(os.path.join(self.path, 'grid.npz'))
             x = data['x'][slices]
@@ -200,8 +234,28 @@ class Config:
         return None
 
     def to_xyz(self, slices, data_type='float32', try_save=True, use_saved=True):
+        """
+        Return the coordinates in Cartesian coordinate system. If the
+        file 'grid.npz' exists, the method might load the coordinates
+        from it instead of calculating them.
+
+        Parameters
+        ----------
+        slices : tuple of slice objects
+            The slices to apply on the coordinates.
+
+        data_type : str, optional
+            The data type of the returned coordinates. Default is 'float32'.
+
+        try_save : bool, optional
+            Whether to try to save the coordinates to a file for future use.
+            Default is True.
+
+        use_saved : bool, optional
+            Whether to try to load the coordinates from a file. Default is True.
+        """
         if use_saved:
-            xyz = self.try_load_xyz(slices)
+            xyz = self._try_load_xyz(slices)
             if xyz is not None:
                 return xyz
 
@@ -209,13 +263,13 @@ class Config:
 
         if self.coord.should_save and try_save and not self.dont_save:
             if slices == (slice(None), slice(None), slice(None)):
-                self.save_xyz(data_type, (x, y, z))
+                self._save_xyz(data_type, (x, y, z))
             else:
-                self.save_xyz(data_type, None)
+                self._save_xyz(data_type, None)
 
         return x, y, z
 
-    def save_xyz(self, data_type, xyz=None):
+    def _save_xyz(self, data_type, xyz=None):
         if not os.path.exists(os.path.join(self.path, 'grid.npz')):
             if xyz is None:
                 x, y, z = self.calc_xyz((slice(None), slice(None), slice(None)), data_type)
@@ -318,7 +372,7 @@ class Mesh:
                 case 'float64' | 'double' | 'd' | 'f8':
                     max_arrays = int(max_memory / 8 / npoints) - 3
         if max_arrays < 1:
-            raise ValueError('max_arrays must be greater than or equal to 1. Try increasing max_memory.')
+            raise ValueError('max_arrays must be greater than or equal to 1. Try increase `max_memory`.')
 
         self.max_arrays = max_arrays
         self.array_names = []
@@ -497,6 +551,11 @@ class Mesh:
             mesh[name] = array.reshape(-1, 3)
 
     def mesh(self, *names):
+        """
+        Return a PyVista mesh with the given variables.
+        The variable names can be given as strings, or as tuples of
+        (frame, name).
+        """
         m = pv.StructuredGrid(*self.xyz_for_mesh)
         for name in names:
             if isinstance(name, str):
