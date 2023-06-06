@@ -1,0 +1,9 @@
+f90nml
+matplotlib
+netCDF4
+numba
+numpy
+pandas
+pybind11
+pyvista
+setuptools

@@ -1,0 +1,266 @@
+#include <iostream>
+#include <array>
+#include <type_traits>
+#include <cstdint>
+#include <limits>
+#include <vectorclass/vectorclass.h>
+
+#include <pybind11/pybind11.h>
+#include <pybind11/numpy.h>
+#include <pybind11/stl.h>
+
+#include "ndarray.hpp"
+
+using namespace std;
+
+#define INLINE inline __attribute__((always_inline))
+
+template<typename Simd>
+struct isimd_type {
+    using type = decltype(roundi(declval<Simd>()));
+};
+
+template<typename Simd>
+struct bsimd_type {
+    using type = decltype(declval<Simd>() == declval<Simd>());
+};
+
+template<typename Float, typename Simd>
+constexpr static size_t simd_length = sizeof(Simd) / sizeof(Float);
+
+
+template<typename Float, typename Simd>
+static auto INLINE convert(Simd i) {
+    if constexpr (is_same_v<Float, double>) {
+        return to_double(i);
+    }
+    else {
+        return to_float(i);
+    }
+}
+
+template<typename Simd, typename bSimd, typename Float>
+static INLINE auto to_indices_weights(Simd target, bSimd msk, Float scale, Float lo) {
+    target = select(msk, target, lo);
+    auto fidx = (target - lo) / scale;
+    auto idx = truncatei(fidx);
+    auto delta = fidx - convert<Float>(idx);
+    array<decltype(idx), 2> indices { idx, idx + 1 };
+    array<Simd, 2> weights { 1.0 - delta, delta };
+    return make_pair(indices, weights);
+}
+
+template<typename Simd, typename bSimd, typename Float>
+static INLINE auto to_indices_weights_2(Simd target, bSimd msk, Float scale, Float lo) {
+    target = select(msk, target, lo+scale);
+    auto fidx = (target - lo) / scale;
+    auto idx = roundi(fidx);
+    auto delta = fidx - convert<Float>(idx);
+    array<decltype(idx), 3> indices { idx - 1, idx, idx + 1 };
+    array<Simd, 3> weights {
+        0.5 * (0.5 - delta) * (0.5 - delta),
+        0.75 - delta * delta,
+        0.5 * (0.5 + delta) * (0.5 + delta)
+    };
+    return make_pair(indices, weights);
+}
+
+template<size_t interp_order, typename Simd, typename Float>
+static INLINE auto interp_one(
+        array<Simd, 3> target,
+        array<Float, 3> scale,
+        array<Float, 3> lo,
+        array<Float, 3> hi,
+        const NdArray<Float, 4> var,
+        vector<Simd>& results) {
+    using iSimd = typename isimd_type<Simd>::type;
+    array<array<iSimd, interp_order+1>, 3> indices;
+    array<array<Simd, interp_order+1>, 3> weights;
+
+    decltype(target[0] >= lo[0]) msk;
+    if constexpr (interp_order == 1) {
+        msk =
+            (target[0] >= lo[0]) & (target[0] < hi[0]) &
+            (target[1] >= lo[1]) & (target[1] < hi[1]) &
+            (target[2] >= lo[2]) & (target[2] < hi[2]);
+    }
+    else if constexpr (interp_order == 2) {
+        msk =
+            (target[0] >= lo[0] + scale[0]) & (target[0] < hi[0] - scale[0]) &
+            (target[1] >= lo[1] + scale[1]) & (target[1] < hi[1] - scale[1]) &
+            (target[2] >= lo[2] + scale[2]) & (target[2] < hi[2] - scale[2]);
+    }
+
+    for (auto i = 0; i < 3; ++i) {
+        if constexpr (interp_order == 1) {
+            auto [idx, wt] = to_indices_weights(target[i], msk, scale[i], lo[i]);
+            indices[i] = idx;
+            weights[i] = wt;
+        }
+        else if constexpr (interp_order == 2) {
+            auto [idx, wt] = to_indices_weights_2(target[i], msk, scale[i], lo[i]);
+            indices[i] = idx;
+            weights[i] = wt;
+        }
+    }
+
+    const size_t num = var.shape(3);
+
+    for (auto i = 0; i < num; ++i) {
+        results[i] = 0.0;
+        for (auto ix = 0; ix < interp_order+1; ++ix) {
+            for (auto iy = 0; iy < interp_order+1; ++iy) {
+                for (auto iz = 0; iz < interp_order+1; ++iz) {
+                    auto val = var.gather(
+                            indices[0][ix],
+                            indices[1][iy],
+                            indices[2][iz], iSimd(i));
+                    results[i] += val * \
+                                  weights[0][ix] * \
+                                  weights[1][iy] * \
+                                  weights[2][iz];
+                }
+            }
+        }
+    }
+    for (auto i = 0; i < num; ++i) {
+        results[i] = select(
+                msk, results[i],
+                numeric_limits<Float>::quiet_NaN());
+    }
+}
+
+template<typename Simd, typename Float>
+static auto interp_kernel(
+        array<const Float*, 3> targets, uint64_t num_targets,
+        array<Float, 3> scale, array<Float, 3> lo, array<Float, 3> hi,
+        NdArray<Float, 4> vars,
+        NdArray<Float, 2> results) {
+    constexpr size_t interp_order = 2;
+
+    array<Simd, 3> target;
+    constexpr size_t simd_len = simd_length<Float, Simd>;
+    const size_t num = vars.shape(3);
+    auto num_simd = num_targets / simd_len;
+    auto num_remain = num_targets % simd_len;
+#pragma omp parallel
+    {
+        vector<Simd> buffer(num);
+#pragma omp for schedule(guided)
+        for (auto i = 0; i < num_simd; ++i) {
+            for (auto j = 0; j < 3; ++j) {
+                target[j].load(targets[j] + i * simd_len);
+            }
+            interp_one<interp_order>(target, scale, lo, hi, vars, buffer);
+            for (auto s = 0; s < simd_len; ++s) {
+                for (auto j = 0; j < num; ++j) {
+                    results(i*simd_len+s, j) = buffer[j][s];
+                }
+            }
+        }
+    }
+
+    array<Float, simd_len> buf;
+    for (auto j = 0; j < 3; ++j) {
+        for (auto i = 0; i < num_remain; ++i) {
+            buf[i] = targets[j][num_simd * simd_len + i];
+        }
+        for (auto i = num_remain; i < simd_len; ++i) {
+            buf[i] = lo[i];
+        }
+        target[j].load(buf.data());
+    }
+    vector<Simd> buffer(num);
+    interp_one<interp_order>(target, scale, lo, hi, vars, buffer);
+    for (auto i = 0; i < num_remain; ++i) {
+        for (auto s = 0; s < simd_len; ++s) {
+            for (auto j = 0; j < num; ++j) {
+                results(i*simd_len+s, j) = buffer[j][s];
+            }
+        }
+    }
+}
+
+template<typename Float>
+struct native_simd_type {
+    using type = simd_type_t<Float, (INSTRSET >= 9 ? 512 : 256) / sizeof(Float) / 8>;
+};
+
+template<typename Float>
+using native_simd_t = typename native_simd_type<Float>::type;
+
+template<typename Float>
+py::array interp(
+        py::list coords, py::list pqw, py::array_t<Float> var) {
+    // extract p, q, w from coords
+    auto p = coords[0].cast<py::array_t<Float>>();
+    auto q = coords[1].cast<py::array_t<Float>>();
+    auto w = coords[2].cast<py::array_t<Float>>();
+    // p, q, w must be 1-D
+    if (p.ndim() != 1 || q.ndim() != 1 || w.ndim() != 1) {
+        throw std::runtime_error("p, q, w must be 1-D");
+    }
+    // lo, hi: first and last value of p, q, w
+    array<Float, 3> lo, hi, scale;
+    lo[0] = p.data()[0];
+    lo[1] = q.data()[0];
+    lo[2] = w.data()[0];
+    hi[0] = p.data()[p.size()-1];
+    hi[1] = q.data()[q.size()-1];
+    hi[2] = w.data()[w.size()-1];
+    scale[0] = p.data()[1] - p.data()[0];
+    scale[1] = q.data()[1] - q.data()[0];
+    scale[2] = w.data()[1] - w.data()[0];
+    // extract p1, q1, w1 from pqw
+    auto p1 = pqw[0].cast<py::array_t<Float>>();
+    auto q1 = pqw[1].cast<py::array_t<Float>>();
+    auto w1 = pqw[2].cast<py::array_t<Float>>();
+    // p1, q1, w1 must have same shape and stride, while any dim is ok.
+    if (p1.ndim() != q1.ndim() || q1.ndim() != w1.ndim()) {
+        throw std::runtime_error("p1, q1, w1 must have same shape");
+    }
+    for (auto i = 0; i < p1.ndim(); ++i) {
+        if (p1.shape(i) != q1.shape(i) || q1.shape(i) != w1.shape(i)) {
+            throw std::runtime_error("p1, q1, w1 must have same shape");
+        }
+        if (p1.strides(i) != q1.strides(i) || q1.strides(i) != w1.strides(i)) {
+            throw std::runtime_error("p1, q1, w1 must have same stride");
+        }
+    }
+
+    auto var_dim = var.ndim();
+    if (var_dim < 3) {
+        throw std::runtime_error("var must have at least 3 dimensions");
+    }
+
+    // Create result array with shape (p1.size(), new_shape[3])
+    NdArray<Float, 4> var_arr(var);
+    auto result_shape = array<size_t, 2>{size_t(p1.size()), var_arr.shape(3)};
+    auto result = py::array_t<Float>(result_shape);
+    NdArray<Float, 2> result_arr(result);
+
+    // build target coords
+    auto num_target = p1.size();
+    array<const Float*, 3> targets {p1.data(), q1.data(), w1.data()};
+
+    // invoke interp_kernel
+    interp_kernel<typename native_simd_type<Float>::type, Float>(targets, num_target, scale, lo, hi, var_arr, result_arr);
+
+    vector<size_t> result_shape1;
+    for (auto i = 0; i < p1.ndim(); ++i) {
+        result_shape1.push_back(p1.shape(i));
+    }
+    auto var_shape = var.shape();
+    for (auto i = 3; i < var_dim; ++i) {
+        result_shape1.push_back(var_shape[i]);
+    }
+
+    return result.reshape(result_shape1);
+}
+
+// export interp to python
+PYBIND11_MODULE(interp, m) {
+    m.doc() = "Interpolation";
+    m.def("interp", &interp<float>, "Interpolation");
+    m.def("interp", &interp<double>, "Interpolation");
+}
