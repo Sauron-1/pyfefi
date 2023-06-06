@@ -1,4 +1,4 @@
-#PyFefi
+# PyFefi
 Post processor for Prof. Wang's fefi code, mainly used for global simulations. This lib is meant to work with curvilinear netCDF outputs, especially the pnetcdf version.
 
 ## Dependencies
@@ -54,3 +54,6 @@ plt.gca().set_aspect(1)
 plt.colorbar(pcm)
 plt.show()
 ```
+
+## Tested platform
+Ubuntu 22.04 with GCC 11.3.0, Python 3.10.6.
