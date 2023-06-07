@@ -5,5 +5,4 @@ numba
 numpy
 pandas
 pybind11
-pyvista
 setuptools

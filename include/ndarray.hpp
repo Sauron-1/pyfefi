@@ -1,25 +1,9 @@
 #include <array>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
-#include <vectorclass/vectorclass.h>
+#include "simd.hpp"
 
 namespace py = pybind11;
-
-template<typename Float, size_t N> struct simd_type {};
-template<> struct simd_type<float, 4> { using type = Vec4f; };
-template<> struct simd_type<float, 8> { using type = Vec8f; };
-template<> struct simd_type<float, 16> { using type = Vec16f; };
-template<> struct simd_type<double, 2> { using type = Vec2d; };
-template<> struct simd_type<double, 4> { using type = Vec4d; };
-template<> struct simd_type<double, 8> { using type = Vec8d; };
-
-template<typename Simd> struct scalar_type {
-    using type = decltype(std::declval<Simd>()[0]);
-    constexpr static size_t simd_len = sizeof(Simd) / sizeof(type);
-};
-
-template<typename T, size_t N>
-using simd_type_t = typename simd_type<T, N>::type;
 
 /**
  * @brief A class for N-dimensional arrays.

@@ -1,11 +1,14 @@
 import numpy as np
 import netCDF4
-import pyvista as pv
-import pandas as pd
 import numba as nb
 import math
 import f90nml
 import os
+try:
+    import pyvista as pv
+    HAS_PYVISTA = True
+except ImportError:
+    HAS_PYVISTA = False
 
 from .coords import get_coord_from_id
 
@@ -556,6 +559,8 @@ class Mesh:
         The variable names can be given as strings, or as tuples of
         (frame, name).
         """
+        if not HAS_PYVISTA:
+            raise Exception("PyVista is not available.")
         m = pv.StructuredGrid(*self.xyz_for_mesh)
         for name in names:
             if isinstance(name, str):

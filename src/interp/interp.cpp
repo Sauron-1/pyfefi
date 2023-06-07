@@ -10,34 +10,13 @@
 #include <pybind11/stl.h>
 
 #include "ndarray.hpp"
+#include "simd.hpp"
 
 using namespace std;
 
-#define INLINE inline __attribute__((always_inline))
-
-template<typename Simd>
-struct isimd_type {
-    using type = decltype(roundi(declval<Simd>()));
-};
-
-template<typename Simd>
-struct bsimd_type {
-    using type = decltype(declval<Simd>() == declval<Simd>());
-};
-
-template<typename Float, typename Simd>
-constexpr static size_t simd_length = sizeof(Simd) / sizeof(Float);
-
-
-template<typename Float, typename Simd>
-static auto INLINE convert(Simd i) {
-    if constexpr (is_same_v<Float, double>) {
-        return to_double(i);
-    }
-    else {
-        return to_float(i);
-    }
-}
+#ifndef PYFEFI_INTERP_ORDER
+#   define PYFEFI_INTERP_ORDER 2
+#endif
 
 template<typename Simd, typename bSimd, typename Float>
 static INLINE auto to_indices_weights(Simd target, bSimd msk, Float scale, Float lo) {
@@ -136,7 +115,7 @@ static auto interp_kernel(
         array<Float, 3> scale, array<Float, 3> lo, array<Float, 3> hi,
         NdArray<Float, 4> vars,
         NdArray<Float, 2> results) {
-    constexpr size_t interp_order = 2;
+    constexpr size_t interp_order = PYFEFI_INTERP_ORDER;
 
     array<Simd, 3> target;
     constexpr size_t simd_len = simd_length<Float, Simd>;
@@ -180,14 +159,6 @@ static auto interp_kernel(
         }
     }
 }
-
-template<typename Float>
-struct native_simd_type {
-    using type = simd_type_t<Float, (INSTRSET >= 9 ? 512 : 256) / sizeof(Float) / 8>;
-};
-
-template<typename Float>
-using native_simd_t = typename native_simd_type<Float>::type;
 
 template<typename Float>
 py::array interp(

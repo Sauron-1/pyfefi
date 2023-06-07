@@ -16,6 +16,5 @@ dependencies = [
     'pandas',
     'netCDF4',
     'f90nml',
-    'pyvista',
     'pybind11'
 ]
