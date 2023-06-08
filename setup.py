@@ -1,6 +1,7 @@
 from glob import glob
 from setuptools import setup, find_packages
 from pybind11.setup_helpers import Pybind11Extension, build_ext
+import sys
 import os
 
 __version__ = "0.0.1"
@@ -14,6 +15,8 @@ cxx_config = dict(
     extra_link_args = ["-fopenmp"],
 )
 
+#cxx_config['extra_compile_args'].append('-DBOUNDSCHECK')
+
 ext_modules = [
     Pybind11Extension(
         "pyfefi.coords.lib.cartesian_mod",
@@ -23,6 +26,11 @@ ext_modules = [
     Pybind11Extension(
         "pyfefi.interp",
         ["src/interp/interp.cpp"],
+        **cxx_config
+    ),
+    Pybind11Extension(
+        "pyfefi.lic",
+        ["src/lic.cpp"],
         **cxx_config
     ),
 ]

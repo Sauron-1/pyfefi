@@ -1,5 +1,6 @@
 #include <utility>
 #include <type_traits>
+#include <functional>
 
 #include <vectorclass/vectorclass.h>
 
@@ -33,8 +34,8 @@ struct bsimd_type {
     using type = decltype(std::declval<Simd>() == std::declval<Simd>());
 };
 
-template<typename Float, typename Simd>
-constexpr static size_t simd_length = sizeof(Simd) / sizeof(Float);
+template<typename Simd>
+constexpr static size_t simd_length = sizeof(Simd) / sizeof(std::declval<Simd>()[0]);
 
 template<typename Float>
 struct native_simd_type {
@@ -51,5 +52,14 @@ static auto INLINE convert(Simd i) {
     }
     else {
         return to_float(i);
+    }
+}
+
+template<auto Start, auto End, auto Inc, typename Fn, typename...Args>
+    requires( Start >= End or std::invocable<Fn, std::integral_constant<decltype(Start), Start>, Args...> )
+INLINE constexpr void constexpr_for(Fn&& fn, Args&&...args) {
+    if constexpr (Start < End) {
+        std::invoke(std::forward<Fn>(fn), std::integral_constant<decltype(Start), Start>{}, std::forward<Args>(args)...);
+        constexpr_for<Start+Inc, End, Inc>(std::forward<Fn>(fn), std::forward<Args>(args)...);
     }
 }
