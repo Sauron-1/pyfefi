@@ -35,7 +35,7 @@ static auto interp_kernel(
 #pragma omp parallel
     {
         vector<Simd> buffer(num);
-#pragma omp for schedule(guided)
+#pragma omp for
         for (auto i = 0; i < num_simd; ++i) {
             for (auto j = 0; j < 3; ++j) {
                 target[j].load(targets[j] + i * simd_len);
@@ -55,7 +55,7 @@ static auto interp_kernel(
             buf[i] = targets[j][num_simd * simd_len + i];
         }
         for (auto i = num_remain; i < simd_len; ++i) {
-            buf[i] = lo[i];
+            buf[i] = lo[j];
         }
         target[j].load(buf.data());
     }

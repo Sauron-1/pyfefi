@@ -120,27 +120,6 @@ class CMAxis {
         int idx_min_;
 };
 
-template<typename T>
-static inline std::vector<size_t> get_shape(const py::array_t<T> arr) {
-    size_t ndim = arr.ndim();
-    std::vector<size_t> shape(ndim);
-    for (auto i = 0; i < ndim; ++i) {
-        shape[i] = arr.shape(i);
-    }
-    return shape;
-}
-
-template<typename T>
-static inline size_t get_min_stride(const py::array_t<T> arr) {
-    size_t ndim = arr.ndim();
-    size_t stride = sizeof(T);
-    for (auto i = 0; i < ndim; ++i) {
-        auto s = arr.strides(i);
-        if (s < stride) stride = s;
-    }
-    return stride / sizeof(T);
-}
-
 template<typename Real>
 class CartesianModCore {
 
@@ -180,6 +159,7 @@ class CartesianModCore {
             size_t p_st = get_min_stride(p),
                    q_st = get_min_stride(q),
                    w_st = get_min_stride(w);
+#pragma omp parallel for
             for (auto i = 0; i < size; ++i) {
                 x_ptr[i] = xaxis.get(p_ptr[i*p_st]);
                 y_ptr[i] = yaxis.get(q_ptr[i*q_st]);
@@ -203,6 +183,7 @@ class CartesianModCore {
             size_t x_st = get_min_stride(x),
                    y_st = get_min_stride(y),
                    z_st = get_min_stride(z);
+#pragma omp parallel for
             for (auto i = 0; i < size; ++i) {
                 p_ptr[i] = xaxis.getr(x_ptr[i*x_st]);
                 q_ptr[i] = yaxis.getr(y_ptr[i*y_st]);
@@ -215,7 +196,7 @@ class CartesianModCore {
         CMAxis<Real> xaxis, yaxis, zaxis;
 };
 
-PYBIND11_MODULE(cartesian_mod_core, m) {
+PYBIND11_MODULE(cartesian_mod, m) {
 
     py::class_<CartesianModCore<double>>(m, "CartesianModCore")
         .def(py::init<const py::array_t<double>, const py::array_t<double>>())

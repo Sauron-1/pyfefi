@@ -13,7 +13,6 @@ template<typename Simd, typename iSimd, typename...Arr>
 static INLINE auto interp_one_2d_2(
         std::array<Simd, 2> pos,
         std::array<iSimd, 2> idx,
-        std::array<size_t, 2> shape,
         const Arr&...arr) {
     std::array<std::array<iSimd, 2>, 2> indices{
         std::array{ idx[0], idx[0]+1 },
@@ -72,13 +71,13 @@ class LicPack {
         INLINE void advance(int kidx) {
             Simd vx, vy;
             if constexpr (not acc_only) {
-                auto [ui, vi, ti] = interp_one_2d_2(pos, idx, u.shape(), u, v, texture);
+                auto [ui, vi, ti] = interp_one_2d_2(pos, idx, u, v, texture);
                 result = if_add(msk, result, ti * kernel(kidx));
                 vx = ui * sign;
                 vy = vi * sign;
             }
             else {
-                auto [ui, vi] = interp_one_2d_2(pos, idx, u.shape(), u, v);
+                auto [ui, vi] = interp_one_2d_2(pos, idx, u, v);
                 vx = ui * sign;
                 vy = vi * sign;
             }

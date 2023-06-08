@@ -11,7 +11,7 @@ headers = glob("include/*")
 cxx_config = dict(
     include_dirs = ["include"],
     define_macros = [("VERSION_INFO", __version__)],
-    extra_compile_args = ["-std=c++20", "-O3", "-march=native", "-fopenmp", "-Wno-sign-compare", "-DNDEBUG"],
+    extra_compile_args = ["-std=c++20", "-O3", "-march=native", "-fopenmp", "-Wno-sign-compare", "-DNDEBUG", "-Wextra", "-static"],
     extra_link_args = ["-fopenmp"],
 )
 
@@ -21,6 +21,11 @@ ext_modules = [
     Pybind11Extension(
         "pyfefi.coords.lib.cartesian_mod",
         ["src/coords/cartesian_mod_core.cpp"],
+        **cxx_config
+    ),
+    Pybind11Extension(
+        "pyfefi.coords.lib.sphere_mod",
+        ["src/coords/sphere_mod_core.cpp"],
         **cxx_config
     ),
     Pybind11Extension(

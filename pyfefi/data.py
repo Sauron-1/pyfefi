@@ -73,7 +73,7 @@ Slice = _Slice()
 
 class Config:
 
-    def __init__(self, path, idx=None, dont_save=False, version=2):
+    def __init__(self, path, idx=None, dont_save=False, use_saved=True, version=2):
         """
         Generate grid info from configuration file.
 
@@ -90,10 +90,14 @@ class Config:
             If True, will not attempt to save grid data. Otherwise
             `grid.npz` might be generated for latter use.
 
+        use_saved : bool, default True
+            If True, will try to load grid data from `grid.npz` if exists.
+
         version : int, optional
             For compatibility with older version. For older version,
             set to 1. Default is 2.
         """
+        self.use_saved = use_saved
         if os.path.isfile(path):
             conf_fn = path
             self.path = os.path.dirname(path)
@@ -236,7 +240,7 @@ class Config:
             return x, y, z
         return None
 
-    def to_xyz(self, slices, data_type='float32', try_save=True, use_saved=True):
+    def to_xyz(self, slices, data_type='float32', try_save=True, use_saved=None):
         """
         Return the coordinates in Cartesian coordinate system. If the
         file 'grid.npz' exists, the method might load the coordinates
@@ -257,6 +261,8 @@ class Config:
         use_saved : bool, optional
             Whether to try to load the coordinates from a file. Default is True.
         """
+        if use_saved is None:
+            use_saved = self.use_saved
         if use_saved:
             xyz = self._try_load_xyz(slices)
             if xyz is not None:
@@ -345,7 +351,10 @@ class Mesh:
         self.path = self.config.path
         self.nframes = self.config.nframes
 
-        self.x, self.y, self.z = self.config.to_xyz(self.slices, data_type=data_type, use_saved=not recalc_grid)
+        use_saved = None
+        if recalc_grid:
+            use_saved = False
+        self.x, self.y, self.z = self.config.to_xyz(self.slices, data_type=data_type, use_saved=recalc_grid)
 
         self.xyz_for_mesh = [
                 self.x.transpose(2, 1, 0),

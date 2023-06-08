@@ -336,3 +336,25 @@ class NdIndices {
             return std::make_pair(div, mod);
         }
 };
+
+
+template<typename T>
+static inline std::vector<size_t> get_shape(const py::array_t<T> arr) {
+    size_t ndim = arr.ndim();
+    std::vector<size_t> shape(ndim);
+    for (auto i = 0; i < ndim; ++i) {
+        shape[i] = arr.shape(i);
+    }
+    return shape;
+}
+
+template<typename T>
+static inline size_t get_min_stride(const py::array_t<T> arr) {
+    size_t ndim = arr.ndim();
+    size_t stride = sizeof(T);
+    for (auto i = 0; i < ndim; ++i) {
+        auto s = arr.strides(i);
+        if (s < stride) stride = s;
+    }
+    return stride / sizeof(T);
+}
