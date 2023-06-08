@@ -52,6 +52,7 @@ class LicPack {
         using Simd = native_simd_t<Float>;
         using iSimd = typename isimd_type<Simd>::type;
         using bSimd = typename bsimd_type<Simd>::type;
+        using ibSimd = typename bsimd_type<iSimd>::type;
 
         INLINE LicPack(
                 std::array<iSimd, 2> _idx,
@@ -92,8 +93,8 @@ class LicPack {
             auto if_use_tx = tx < ty;
             auto t = select(tx < ty, tx, ty);
 
-            idx[0] = if_add( if_use_tx, idx[0], select(vx > 0, iSimd(1), iSimd(-1)));
-            idx[1] = if_add(!if_use_tx, idx[1], select(vy > 0, iSimd(1), iSimd(-1)));
+            idx[0] = if_add( ibSimd(if_use_tx), idx[0], select(ibSimd(vx > 0), iSimd(1), iSimd(-1)));
+            idx[1] = if_add(!ibSimd(if_use_tx), idx[1], select(ibSimd(vy > 0), iSimd(1), iSimd(-1)));
 
             pos[0] = select( if_use_tx, 1.0 - bx, t * vx + pos[0]);
             pos[1] = select(!if_use_tx, 1.0 - by, t * vy + pos[1]);
@@ -104,7 +105,7 @@ class LicPack {
         INLINE auto limit_idx() {
             for (auto i = 0; i < 2; ++i) {
                 msk &= (idx[i] >= 0) & (idx[i] < shape[i] - 1);
-                idx[i] = select(msk, idx[i], 0);
+                idx[i] = select(ibSimd(msk), idx[i], 0);
             }
         }
 

@@ -20,7 +20,6 @@ static inline std::vector<Real> integral(Real dx0, Real xlo, Real xhi, FnLeft&& 
     std::vector<Real> xs(4000);
 
     size_t num_left = 0,
-           num_right = 0,
            idx = 0;
 
     Real x = dx0,
@@ -41,7 +40,6 @@ static inline std::vector<Real> integral(Real dx0, Real xlo, Real xhi, FnLeft&& 
         dx *= fnright(x);
         xs[idx] = x;
         ++idx;
-        ++num_right;
         if (x >= xhi + 4*dx) break;
     }
 

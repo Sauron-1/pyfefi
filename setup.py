@@ -1,6 +1,6 @@
 from glob import glob
 from setuptools import setup, find_packages
-from pybind11.setup_helpers import Pybind11Extension, build_ext
+from pybind11.setup_helpers import Pybind11Extension, build_ext, ParallelCompile
 import sys
 import os
 
@@ -37,6 +37,8 @@ ext_modules = [
 
 packages = [os.path.join('pyfefi', p) for p in find_packages('pyfefi')]
 packages.append('pyfefi')
+
+ParallelCompile("NPY_NUM_BUILD_JOBS").install()
 
 setup(
     name="pyfefi",
