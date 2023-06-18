@@ -12,24 +12,33 @@
 #include <ndarray.hpp>
 #include <simd.hpp>
 
-template<typename Simd, typename bSimd, typename Float>
-static INLINE auto to_indices_weights(Simd target, bSimd msk, Float scale, Float lo) {
-    target = select(msk, target, lo);
+template<typename iSimd>
+static INLINE iSimd limit_index(iSimd idx, size_t idx_max) {
+    idx = select(idx < 0, 0, idx);
+    idx = select(idx >= idx_max, idx_max-1, idx);
+    return idx;
+}
+
+template<typename Simd, typename Float>
+static INLINE auto to_idx_weights(Simd target, Float scale, Float lo, size_t idx_max) {
     auto fidx = (target - lo) / scale;
     auto idx = truncatei(fidx);
     auto delta = fidx - convert<Float>(idx);
-    std::array<decltype(idx), 2> indices { idx, idx + 1 };
+    std::array<decltype(idx), 2> indices { limit_index(idx, idx_max), limit_index(idx+1, idx_max) };
     std::array<Simd, 2> weights { 1.0 - delta, delta };
     return make_pair(indices, weights);
 }
 
-template<typename Simd, typename bSimd, typename Float>
-static INLINE auto to_indices_weights_2(Simd target, bSimd msk, Float scale, Float lo) {
-    target = select(msk, target, lo+scale);
+template<typename Simd, typename Float>
+static INLINE auto to_idx_weights_2(Simd target, Float scale, Float lo, size_t idx_max) {
     auto fidx = (target - lo) / scale;
     auto idx = roundi(fidx);
     auto delta = fidx - convert<Float>(idx);
-    std::array<decltype(idx), 3> indices { idx - 1, idx, idx + 1 };
+    std::array<decltype(idx), 3> indices {
+        limit_index(idx-1, idx_max),
+        limit_index(idx, idx_max),
+        limit_index(idx+1, idx_max)
+    };
     std::array<Simd, 3> weights {
         0.5 * (0.5 - delta) * (0.5 - delta),
         0.75 - delta * delta,
@@ -49,29 +58,28 @@ static INLINE auto interp_one(
     using iSimd = typename isimd_type<Simd>::type;
     std::array<std::array<iSimd, interp_order+1>, 3> indices;
     std::array<std::array<Simd, interp_order+1>, 3> weights;
+    std::array<size_t, 3> idx_max;
+    decltype(target[0] > 0) msk = true;
 
-    decltype(target[0] >= lo[0]) msk;
-    if constexpr (interp_order == 1) {
-        msk =
-            (target[0] >= lo[0]) & (target[0] < hi[0]) &
-            (target[1] >= lo[1]) & (target[1] < hi[1]) &
-            (target[2] >= lo[2]) & (target[2] < hi[2]);
+    for (auto i = 0; i < 3; ++i) {
+        idx_max[i] = (hi[i] - lo[i]) / scale[i];
+        if (idx_max[i] <= 0)
+            idx_max[i] = 1;
     }
-    else if constexpr (interp_order == 2) {
-        msk =
-            (target[0] >= lo[0] + scale[0]) & (target[0] < hi[0] - scale[0]) &
-            (target[1] >= lo[1] + scale[1]) & (target[1] < hi[1] - scale[1]) &
-            (target[2] >= lo[2] + scale[2]) & (target[2] < hi[2] - scale[2]);
+
+    for (auto i = 0; i < 3; ++i) {
+        msk &= target[i] >= lo[i];
+        msk &= target[i] <= hi[i];
     }
 
     for (auto i = 0; i < 3; ++i) {
         if constexpr (interp_order == 1) {
-            auto [idx, wt] = to_indices_weights(target[i], msk, scale[i], lo[i]);
+            auto [idx, wt] = to_idx_weights(target[i], scale[i], lo[i], idx_max[i]);
             indices[i] = idx;
             weights[i] = wt;
         }
         else if constexpr (interp_order == 2) {
-            auto [idx, wt] = to_indices_weights_2(target[i], msk, scale[i], lo[i]);
+            auto [idx, wt] = to_idx_weights_2(target[i], scale[i], lo[i], idx_max[i]);
             indices[i] = idx;
             weights[i] = wt;
         }

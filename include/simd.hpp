@@ -1,3 +1,6 @@
+#ifndef __GNUC__
+#   pragma STDC FP_CONTRACT ON
+#endif
 #include <utility>
 #include <type_traits>
 #include <functional>
