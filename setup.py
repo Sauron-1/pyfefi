@@ -1,6 +1,7 @@
 from glob import glob
 from setuptools import setup, find_packages
 from pybind11.setup_helpers import Pybind11Extension, build_ext, ParallelCompile
+import platform
 import sys
 import os
 
@@ -11,9 +12,14 @@ headers = glob("include/*")
 cxx_config = dict(
     include_dirs = ["include"],
     define_macros = [("VERSION_INFO", __version__)],
-    extra_compile_args = ["-std=c++20", "-O3", "-march=native", "-fopenmp", "-Wno-sign-compare", "-DNDEBUG", "-Wextra", "-static"],
     extra_link_args = ["-fopenmp"],
 )
+
+# set up compiler flags based on platform
+if platform.system() == "Windows":
+    cxx_config['extra_compile_args'] = ["/std:c++latest", "/O3", "/openmp", "/W3", "/DNDEBUG", "/arch:AVX2"]
+else:
+    cxx_config['extra_compile_args'] = ["-std=c++20", "-O3", "-march=native", "-fopenmp", "-Wno-sign-compare", "-DNDEBUG", "-Wextra", "-static"]
 
 #cxx_config['extra_compile_args'].append('-DBOUNDSCHECK')
 

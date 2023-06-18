@@ -8,10 +8,10 @@ import functools
 
 if __name__ == "__main__":
     from coord import Coordinate
-    from lib.cartesian_mod_core import CartesianModCoref
+    from lib.cartesian_mod import CartesianModCoref
 else:
     from .coord import Coordinate
-    from .lib.cartesian_mod_core import CartesianModCoref
+    from .lib.cartesian_mod import CartesianModCoref
 
 class CartesianM(Coordinate):
 

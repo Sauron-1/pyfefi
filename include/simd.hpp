@@ -9,7 +9,11 @@
 
 #pragma once
 
-#define INLINE inline __attribute__((always_inline))
+#if defined(_MSC_VER)
+#   define INILNE __forceinline
+#else
+#   define INLINE inline __attribute__((always_inline))
+#endif
 
 template<typename Float, size_t N> struct simd_type {};
 template<> struct simd_type<float, 4> { using type = Vec4f; };
