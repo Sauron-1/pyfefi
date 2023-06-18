@@ -1,6 +1,12 @@
-#ifndef __GNUC__
-#   pragma STDC FP_CONTRACT ON
+#if defined(_MSC_VER)
+#   define INLINE __forceinline
+#else
+#   define INLINE inline __attribute__((always_inline))
+#   ifndef __GNUC__
+#       pragma STDC FP_CONTRACT ON
+#   endif
 #endif
+
 #include <utility>
 #include <type_traits>
 #include <functional>
@@ -9,11 +15,6 @@
 
 #pragma once
 
-#if defined(_MSC_VER)
-#   define INILNE __forceinline
-#else
-#   define INLINE inline __attribute__((always_inline))
-#endif
 
 template<typename Float, size_t N> struct simd_type {};
 template<> struct simd_type<float, 4> { using type = Vec4f; };
