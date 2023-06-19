@@ -24,30 +24,33 @@ class NdArray {
 
         template<int extra_flags>
         NdArray(py::array_t<T, extra_flags>& arr) {
-            size_t arr_dim = arr.ndim();
-            for (size_t i = 0; i < N; ++i) {
-                if (i < arr_dim) {
-                    shape_[i] = arr.shape(i);
-                    strides_[i] = arr.strides(i) / sizeof(Scalar);
-                }
-                else {
-                    shape_[i] = 1;
-                    strides_[i] = 0;
-                }
-            }
-            data_ = (Scalar*) arr.mutable_data();
+            setup_shape_stride(arr);
+            if (arr.writeable())
+                data_ = (Scalar*) arr.mutable_data();
+            else
+                data_ = (Scalar*) arr.data();
+            allocated_data_ = false;
+        }
+
+        template<int extra_flags>
+        NdArray(const py::array_t<T, extra_flags>& arr) {
+            setup_shape_stride(arr);
+            data_ = (Scalar*) arr.data();
             allocated_data_ = false;
         }
 
         NdArray(py::array& arr) {
-            if (arr.ndim() != N) {
-                throw std::runtime_error("Wrong number of dimensions");
-            }
-            for (size_t i = 0; i < N; ++i) {
-                shape_[i] = arr.shape(i);
-                strides_[i] = arr.strides(i) / sizeof(Scalar);
-            }
-            data_ = (Scalar*) arr.mutable_data();
+            setup_shape_stride(arr);
+            if (arr.writeable())
+                data_ = (Scalar*) arr.mutable_data();
+            else
+                data_ = (Scalar*) arr.data();
+            allocated_data_ = false;
+        }
+
+        NdArray(const py::array& arr) {
+            setup_shape_stride(arr);
+            data_ = (Scalar*) arr.data();
             allocated_data_ = false;
         }
 
@@ -221,6 +224,21 @@ class NdArray {
                             exit(1);
                         }
                     }
+                }
+            }
+        }
+        
+        template<typename Arr>
+        void setup_shape_stride(const Arr& arr) {
+            size_t arr_dim = arr.ndim();
+            for (size_t i = 0; i < N; ++i) {
+                if (i < arr_dim) {
+                    shape_[i] = arr.shape(i);
+                    strides_[i] = arr.strides(i) / sizeof(Scalar);
+                }
+                else {
+                    shape_[i] = 1;
+                    strides_[i] = 0;
                 }
             }
         }

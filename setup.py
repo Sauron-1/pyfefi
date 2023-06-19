@@ -19,7 +19,7 @@ cxx_config = dict(
 if platform.system() == "Windows":
     cxx_config['extra_compile_args'] = ["/std:c++latest", "/O3", "/openmp", "/W3", "/DNDEBUG", "/arch:AVX2"]
 else:
-    cxx_config['extra_compile_args'] = ["-std=c++20", "-O3", "-march=native", "-fopenmp", "-Wno-sign-compare", "-DNDEBUG", "-Wextra", "-static"]
+    cxx_config['extra_compile_args'] = ["-std=c++20", "-O3", "-march=native", "-fopenmp", "-Wno-sign-compare", "-DNDEBUG", "-Wextra"]
 
 #cxx_config['extra_compile_args'].append('-DBOUNDSCHECK')
 

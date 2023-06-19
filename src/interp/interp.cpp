@@ -72,7 +72,7 @@ static auto interp_kernel(
 
 template<typename Float>
 py::array interp(
-        py::list coords, py::list pqw, py::array_t<Float> var) {
+        py::list coords, py::list pqw, const py::array_t<Float> var) {
     // extract p, q, w from coords
     auto p = coords[0].cast<py::array_t<Float>>();
     auto q = coords[1].cast<py::array_t<Float>>();
@@ -115,7 +115,7 @@ py::array interp(
     }
 
     // Create result array with shape (p1.size(), new_shape[3])
-    NdArray<Float, 4> var_arr(var);
+    const NdArray<Float, 4> var_arr(var);
     auto result_shape = array<size_t, 2>{size_t(p1.size()), var_arr.shape(3)};
     auto result = py::array_t<Float>(result_shape);
     NdArray<Float, 2> result_arr(result);

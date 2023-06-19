@@ -215,10 +215,10 @@ static auto lic_kernel_para(
 
 template<typename Float>
 py::array lic(
-        py::array_t<Float> u,
-        py::array_t<Float> v,
-        py::array_t<Float> texture,
-        py::array_t<Float> kernel) {
+        const py::array_t<Float> u,
+        const py::array_t<Float> v,
+        const py::array_t<Float> texture,
+        const py::array_t<Float> kernel) {
     if (u.ndim() != 2 || v.ndim() != 2 || texture.ndim() != 2 || kernel.ndim() != 1) {
         throw std::runtime_error("Wrong dimensions!");
     }
