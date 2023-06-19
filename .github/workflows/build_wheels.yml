@@ -7,11 +7,14 @@ on:
 
 jobs:
   build_wheels:
-    name: Build wheels on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Build wheels on ${{ matrix.buildplat[0] }} for ${{ matrix.python }}
+    runs-on: ${{ matrix.buildplat[0] }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        buildplat:
+          - [ubuntu-latest, manylinux_x86_64]
+          - [windows-latest, win_amd64]
+        python: [cp39, cp310, cp311]
 
     steps:
       - uses: actions/checkout@v3
@@ -21,9 +24,10 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.13.1
         env:
-          CIBW_BUILD: cp3*-{manylinux_x86_64,win_amd64}
-          CIBW_SKIP: cp36-* cp37-*
+          CIBW_BUILD: ${{ matrix.python }}-${{ matrix.buildplat[1] }}
 
-      - uses: actions/upload-artifact@v3
+      - name: Upload files to Artifacts
+        uses: actions/upload-artifact@v3
         with:
+          name: ${{ matrix.python }}-${{ matrix.buildplat[1] }}
           path: ./wheelhouse/*.whl
