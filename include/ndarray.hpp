@@ -54,6 +54,16 @@ class NdArray {
             allocated_data_ = false;
         }
 
+        template<typename Shape, typename Strides>
+        NdArray(T* data, Shape&& sp, Strides&& st) {
+            allocated_data_ = false;
+            data_ = data;
+            for (auto i = 0; i < N; ++i) {
+                shape_[i] = sp[i];
+                strides_[i] = st[i] / sizeof(Scalar);
+            }
+        }
+
         NdArray(const std::array<size_t, N>& shape) : shape_(shape) {
             size_t size = 1;
             for (auto i = 0; i < N; ++i) {
@@ -367,6 +377,16 @@ static inline std::vector<size_t> get_shape(const py::array_t<T> arr) {
 }
 
 template<typename T>
+static inline std::vector<size_t> get_strides(const py::array_t<T> arr) {
+    size_t ndim = arr.ndim();
+    std::vector<size_t> strides(ndim);
+    for (auto i = 0; i < ndim; ++i) {
+        strides[i] = arr.strides(i);
+    }
+    return strides;
+}
+
+template<typename T>
 static inline size_t get_min_stride(const py::array_t<T> arr) {
     size_t ndim = arr.ndim();
     size_t stride = sizeof(T);
@@ -375,4 +395,30 @@ static inline size_t get_min_stride(const py::array_t<T> arr) {
         if (s < stride) stride = s;
     }
     return stride / sizeof(T);
+}
+
+template<typename Arr0, typename...Arr>
+static inline bool has_same_dim(const Arr0& arr0, const Arr&...arr) {
+    size_t ndim = arr0.ndim();
+    return ((arr.ndim() == ndim) && ...);
+}
+
+template<typename Arr0, typename...Arr>
+static inline bool has_same_shape(const Arr0& arr0, const Arr&...arr) {
+    if (!has_same_dim(arr...)) return false;
+    size_t ndim = arr0.ndim();
+    for (auto i = 0; i < ndim; ++i) {
+        if (((arr.shape(i) != arr0.shape(i)) || ...)) return false;
+    }
+    return true;
+}
+
+template<typename Arr0, typename...Arr>
+static inline bool has_same_stride(const Arr0& arr0, const Arr&...arr) {
+    if (!has_same_dim(arr...)) return false;
+    size_t ndim = arr0.ndim();
+    for (auto i = 0; i < ndim; ++i) {
+        if (((arr.strides(i) != arr0.strides(i)) || ...)) return false;
+    }
+    return true;
 }

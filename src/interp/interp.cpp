@@ -116,9 +116,48 @@ py::array interp(
 
     // Create result array with shape (p1.size(), new_shape[3])
     const NdArray<Float, 4> var_arr(var);
-    auto result_shape = array<size_t, 2>{size_t(p1.size()), var_arr.shape(3)};
-    auto result = py::array_t<Float>(result_shape);
-    NdArray<Float, 2> result_arr(result);
+
+    vector<size_t> result_shape, result_strides;
+    for (auto i = 0; i < p1.ndim(); ++i) {
+        result_shape.push_back(p1.shape(i));
+        result_strides.push_back(p1.strides(i)*var_arr.shape(3));
+    }
+    auto var_shape = var.shape();
+    for (auto i = 3; i < var_dim; ++i) {
+        result_shape.push_back(var_shape[i]);
+        result_strides.push_back(
+                i+1 < var_dim ? var_shape[i+1] : 1);
+    }
+
+    int result_dim = result_shape.size();
+    for (int i = 1; i < result_dim-int(p1.ndim()+1); ++i) {
+        result_strides[result_dim-i-1] *= result_strides[result_dim-i];
+    }
+    for (int i = p1.ndim(); i < result_dim; ++i) {
+        result_strides[i] *= sizeof(Float);
+    }
+
+    for (auto i = 0; i < result_shape.size(); ++i) {
+        cerr << " " << result_shape[i] << " ";
+    }
+    cerr << endl;
+    for (auto i = 0; i < result_strides.size(); ++i) {
+        cerr << " " << result_strides[i] << " ";
+    }
+    cerr << endl;
+
+    py::array_t<Float> result(result_shape, result_strides);
+
+    auto result_arr_shape = array<size_t, 2>{size_t(p1.size()), var_arr.shape(3)};
+    auto result_arr_strides = array<size_t, 2>{var_arr.shape(3)*sizeof(Float), sizeof(Float)};
+    NdArray<Float, 2> result_arr(result.mutable_data(), result_arr_shape, result_arr_strides);
+
+    for (auto i = 0; i < 2; ++i)
+        cerr << " " << result_arr_shape[i] << " ";
+    cerr << endl;
+    for (auto i = 0; i < 2; ++i)
+        cerr << " " << result_arr_strides[i] << " ";
+    cerr << endl;
 
     // build target coords
     auto num_target = p1.size();
@@ -127,16 +166,7 @@ py::array interp(
     // invoke interp_kernel
     interp_kernel<typename native_simd_type<Float>::type, Float>(targets, num_target, scale, lo, hi, var_arr, result_arr);
 
-    vector<size_t> result_shape1;
-    for (auto i = 0; i < p1.ndim(); ++i) {
-        result_shape1.push_back(p1.shape(i));
-    }
-    auto var_shape = var.shape();
-    for (auto i = 3; i < var_dim; ++i) {
-        result_shape1.push_back(var_shape[i]);
-    }
-
-    return result.reshape(result_shape1);
+    return result;
 }
 
 // export interp to python

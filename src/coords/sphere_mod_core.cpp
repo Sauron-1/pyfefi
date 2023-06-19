@@ -43,10 +43,14 @@ class SphereModCore {
                 py::array_t<Real> q,
                 py::array_t<Real> w) const {
             size_t size = p.size();
-            if (q.size() != size || w.size() != size) {
-                throw std::runtime_error("p, q, w must have same size");
-            }
-            py::array_t<Real> x(get_shape(p)), y(get_shape(q)), z(get_shape(w));
+            if (!has_same_shape(p, q, w))
+                throw std::runtime_error("p, q, w must have same shape");
+            if (!has_same_stride(p, q, w))
+                throw std::runtime_error("p, q, w must have same stride");
+            py::array_t<Real>
+                x(get_shape(p), get_strides(p)),
+                y(get_shape(q), get_strides(q)),
+                z(get_shape(w), get_strides(w));
             const Real *p_ptr = p.data(),
                        *q_ptr = q.data(),
                        *w_ptr = w.data();
@@ -76,10 +80,14 @@ class SphereModCore {
                 py::array_t<Real> y,
                 py::array_t<Real> z) const {
             size_t size = x.size();
-            if (y.size() != size || z.size() != size) {
-                throw std::runtime_error("x, y, z must have same size");
-            }
-            py::array_t<Real> p(get_shape(x)), q(get_shape(y)), w(get_shape(z));
+            if (!has_same_shape(x, y, z))
+                throw std::runtime_error("x, y, z must have same shape");
+            if (!has_same_stride(x, y, z))
+                throw std::runtime_error("x, y, z must have same stride");
+            py::array_t<Real>
+                p(get_shape(x), get_strides(x)),
+                q(get_shape(y), get_strides(y)),
+                w(get_shape(z), get_strides(z));
             const Real *x_ptr = x.data(),
                        *y_ptr = y.data(),
                        *z_ptr = z.data();
