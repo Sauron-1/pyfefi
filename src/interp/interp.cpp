@@ -97,17 +97,10 @@ py::array interp(
     auto q1 = pqw[1].cast<py::array_t<Float>>();
     auto w1 = pqw[2].cast<py::array_t<Float>>();
     // p1, q1, w1 must have same shape and stride, while any dim is ok.
-    if (p1.ndim() != q1.ndim() || q1.ndim() != w1.ndim()) {
+    if (!has_same_shape(p1, q1, w1))
         throw std::runtime_error("p1, q1, w1 must have same shape");
-    }
-    for (auto i = 0; i < p1.ndim(); ++i) {
-        if (p1.shape(i) != q1.shape(i) || q1.shape(i) != w1.shape(i)) {
-            throw std::runtime_error("p1, q1, w1 must have same shape");
-        }
-        if (p1.strides(i) != q1.strides(i) || q1.strides(i) != w1.strides(i)) {
-            throw std::runtime_error("p1, q1, w1 must have same stride");
-        }
-    }
+    if (!has_same_stride(p1, q1, w1))
+        throw std::runtime_error("p1, q1, w1 must have same stride");
 
     auto var_dim = var.ndim();
     if (var_dim < 3) {
