@@ -63,13 +63,13 @@ static INLINE auto interp_one(
 
     for (auto i = 0; i < 3; ++i) {
         idx_max[i] = (hi[i] - lo[i]) / scale[i];
-        if (idx_max[i] <= 0)
+        if (idx_max[i] < 1)
             idx_max[i] = 1;
     }
 
     for (auto i = 0; i < 3; ++i) {
-        msk &= target[i] >= lo[i];
-        msk &= target[i] <= hi[i];
+        msk &= target[i] > lo[i] - scale[i]*0.5;
+        msk &= target[i] < hi[i] + scale[i]*0.5;
     }
 
     for (auto i = 0; i < 3; ++i) {

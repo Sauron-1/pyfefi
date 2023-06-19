@@ -137,27 +137,11 @@ py::array interp(
         result_strides[i] *= sizeof(Float);
     }
 
-    for (auto i = 0; i < result_shape.size(); ++i) {
-        cerr << " " << result_shape[i] << " ";
-    }
-    cerr << endl;
-    for (auto i = 0; i < result_strides.size(); ++i) {
-        cerr << " " << result_strides[i] << " ";
-    }
-    cerr << endl;
-
     py::array_t<Float> result(result_shape, result_strides);
 
     auto result_arr_shape = array<size_t, 2>{size_t(p1.size()), var_arr.shape(3)};
     auto result_arr_strides = array<size_t, 2>{var_arr.shape(3)*sizeof(Float), sizeof(Float)};
     NdArray<Float, 2> result_arr(result.mutable_data(), result_arr_shape, result_arr_strides);
-
-    for (auto i = 0; i < 2; ++i)
-        cerr << " " << result_arr_shape[i] << " ";
-    cerr << endl;
-    for (auto i = 0; i < 2; ++i)
-        cerr << " " << result_arr_strides[i] << " ";
-    cerr << endl;
 
     // build target coords
     auto num_target = p1.size();
