@@ -1,6 +1,7 @@
 #include <array>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <type_traits>
 
 #include <iostream>
 
@@ -21,6 +22,14 @@ class NdArray {
     public:
         using Scalar = T;
         static constexpr size_t ndim = N;
+
+        NdArray() {
+            data_ = nullptr;
+            for (auto i = 0; i < ndim; ++i) {
+                shape_[i] = 0;
+                strides_[i] = 0;
+            }
+        }
 
         template<int extra_flags>
         NdArray(py::array_t<T, extra_flags>& arr) {
@@ -84,22 +93,31 @@ class NdArray {
         }
 
         template<typename...I>
+            requires( std::is_integral_v<I> && ...)
         INLINE T& operator()(I...indices) {
             return data_[index(indices...)];
         }
 
         template<typename...I>
+            requires( std::is_integral_v<I> && ...)
         INLINE const T& operator()(I...indices) const {
             return data_[index(indices...)];
         }
 
+        INLINE T& get(std::array<size_t, N> arr) {
+            return data_[index_impl(arr)];
+        }
+        INLINE const T& get(std::array<size_t, N> arr) const {
+            return data_[index_impl(arr)];
+        }
+
         template<typename...I>
+            requires( std::is_integral_v<I> && ...)
         INLINE size_t index(I...indices) const {
             static_assert(sizeof...(I) == N, "Wrong number of indices");
             return index_impl(std::array<size_t, N>{size_t(indices)...});
         }
 
-        template<typename...I>
         INLINE size_t index_impl(std::array<size_t, N> indices) const {
 #if defined(BOUNDSCHECK)
             check_bounds(indices);
@@ -158,16 +176,16 @@ class NdArray {
             return shape_[0] * strides_[0];
         }
 
-        template<typename Simd, typename...Isimd>
+        template<int op_flag = 0, typename Simd, typename...Isimd>
         INLINE auto scatter(Simd values, Isimd...indices) {
             static_assert(sizeof...(Isimd) == N, "Wrong number of indices");
             using first_type = std::tuple_element_t<0, std::tuple<Isimd...>>;
             static_assert((std::is_convertible_v<Isimd, first_type> && ...),
                     "All indices must be convertible to the first index type");
-            return scatter_impl(values, std::array<first_type, N>{first_type(indices)...});
+            return scatter_impl<op_flag>(values, std::array<first_type, N>{first_type(indices)...});
         }
 
-        template<typename Simd, typename Isimd>
+        template<int op_flag, typename Simd, typename Isimd>
         INLINE auto scatter_impl(Simd values, std::array<Isimd, N> indices) {
 #if defined(BOUNDSCHECK)
             check_bounds(indices);
@@ -178,20 +196,23 @@ class NdArray {
                 idx += indices[i] * strides_[i];
             }
             for (size_t i = 0; i < simd_len; ++i) {
-                data_[idx[i]] = values[i];
+                if constexpr (op_flag == 0)
+                    data_[idx[i]] = values[i];
+                else if constexpr (op_flag == 1)
+                    data_[idx[i]] += values[i];
             }
         }
 
-        template<typename Simd, typename Bsimd, typename...Isimd>
+        template<int op_flag = 0, typename Simd, typename Bsimd, typename...Isimd>
         INLINE auto scatterm(Simd values, Bsimd msk, Isimd...indices) {
             static_assert(sizeof...(Isimd) == N, "Wrong number of indices");
             using first_type = std::tuple_element_t<0, std::tuple<Isimd...>>;
             static_assert((std::is_convertible_v<Isimd, first_type> && ...),
                     "All indices must be convertible to the first index type");
-            return scatterm_impl(values, msk, std::array<first_type, N>{first_type(indices)...});
+            return scatterm_impl<op_flag>(values, msk, std::array<first_type, N>{first_type(indices)...});
         }
 
-        template<typename Simd, typename Bsimd, typename Isimd>
+        template<int op_flag, typename Simd, typename Bsimd, typename Isimd>
         INLINE auto scatterm_impl(Simd values, Bsimd msk, std::array<Isimd, N> indices) {
 #if defined(BOUNDSCHECK)
             check_bounds(indices);
@@ -202,12 +223,16 @@ class NdArray {
                 idx += indices[i] * strides_[i];
             }
             for (size_t i = 0; i < simd_len; ++i) {
-                if (msk[i])
-                    data_[idx[i]] = values[i];
+                if (msk[i]) {
+                    if constexpr (op_flag == 0)
+                        data_[idx[i]] = values[i];
+                    else if constexpr (op_flag == 1)
+                        data_[idx[i]] += values[i];
+                }
             }
         }
 
-    private:
+    protected:
         std::array<size_t, N> shape_;
         std::array<size_t, N> strides_;
         bool allocated_data_;
@@ -344,7 +369,7 @@ class NdIndices {
             return ret;
         }
 
-    private:
+    protected:
         std::array<size_t, N> shape_;
         std::array<size_t, N> state_;
         size_t size_, index_;

@@ -23,7 +23,12 @@ class CartesianM(Coordinate):
         dz0 = self.config.names['input_parameters']['dz0']
         lims = np.array(self.config.limits, dtype=np.float32).reshape(3, 2)
         deltas = np.array([dx0, dy0, dz0], dtype=np.float32)
-        self.kernel = CartesianModCoref(deltas, lims)
+
+        if self.config.coord_args is not None:
+            args = np.array(self.config.coord_args).reshape(6, 4).astype(np.float32)
+            self.kernel = CartesianModCoref(deltas, lims, args)
+        else:
+            self.kernel = CartesianModCoref(deltas, lims)
 
         self._grid_size = self.kernel.grid_sizes()
         self.config.grid_size = self._grid_size

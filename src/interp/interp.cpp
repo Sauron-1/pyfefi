@@ -61,11 +61,9 @@ static auto interp_kernel(
     }
     vector<Simd> buffer(num);
     interp_one<interp_order>(target, scale, lo, hi, vars, buffer);
-    for (auto i = 0; i < num_remain; ++i) {
-        for (auto s = 0; s < simd_len; ++s) {
-            for (auto j = 0; j < num; ++j) {
-                results(i*simd_len+s, j) = buffer[j][s];
-            }
+    for (auto s = 0; s < num_remain; ++s) {
+        for (auto j = 0; j < num; ++j) {
+            results(num_simd*simd_len+s, j) = buffer[j][s];
         }
     }
 }

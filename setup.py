@@ -19,7 +19,7 @@ cxx_config = dict(
 if platform.system() == "Windows":
     cxx_config['extra_compile_args'] = ["/std:c++20", "/O2", "/openmp", "/DNDEBUG", "/arch:AVX2"]
 else:
-    cxx_config['extra_compile_args'] = ["-std=c++20", "-O3", "-march=core-avx2", "-fopenmp", "-Wno-sign-compare", "-DNDEBUG", "-Wextra"]
+    cxx_config['extra_compile_args'] = ["-std=c++20", "-O3", "-march=core-avx2", "-fopenmp", "-DNDEBUG", "-Wextra", "-Wno-sign-compare"]
 
 #cxx_config['extra_compile_args'].append('-DBOUNDSCHECK')
 
@@ -42,6 +42,11 @@ ext_modules = [
     Pybind11Extension(
         "pyfefi.lic",
         ["src/lic.cpp"],
+        **cxx_config
+    ),
+    Pybind11Extension(
+        "pyfefi.line_tracer",
+        ["src/trace_line.cpp"],
         **cxx_config
     ),
 ]

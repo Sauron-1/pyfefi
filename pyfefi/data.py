@@ -132,6 +132,8 @@ class Config:
 
         self.names = names
 
+        self.coord_args = names.get('pyfefiparams', {}).get('coord_args', None)
+
         if grid_type == 1:
             coord_id = None
 

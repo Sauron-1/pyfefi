@@ -59,8 +59,15 @@ class CMAxis {
 
     public:
         template<typename FnLeft, typename FnRight>
-        CMAxis(Real dx0, Real _xlo, Real _xhi, FnLeft&& fnleft, FnRight&& fnright):
-            p2x_(integral(dx0, _xlo, _xhi, fnleft, fnright)) {
+        CMAxis(Real dx0, Real _xlo, Real _xhi, FnLeft&& fnleft, FnRight&& fnright) {
+            init(dx0, _xlo, _xhi, std::forward<FnLeft>(fnleft), std::forward<FnRight>(fnright));
+        }
+
+        CMAxis() = default;
+
+        template<typename FnLeft, typename FnRight>
+        void init(Real dx0, Real _xlo, Real _xhi, FnLeft&& fnleft, FnRight&& fnright) {
+            p2x_ = integral(dx0, _xlo, _xhi, fnleft, fnright);
             int extra = std::max(int(dx0*20), 4);
             size_t len = p2x_.size();
             Real xlo = p2x_[4],
@@ -135,6 +142,22 @@ class CartesianModCore {
                     [](Real x) { return mytanh<Real>(x, -1.5, 1, 1.01, 1); },
                     [](Real x) { return mytanh<Real>(x, 1.5, 1, 1, 1.01); }) {}
 
+        CartesianModCore(const py::array_t<Real> diff, const py::array_t<Real> lims, const py::array_t<Real> conf) {
+            std::array<std::array<Real, 4>, 6> args;
+            for (auto i = 0; i < 6; ++i)
+                for (auto j = 0; j < 4; ++j)
+                    args[i][j] = conf.at(i, j);
+            xaxis.init(diff.at(0), lims.at(0, 0), lims.at(0, 1),
+                    [=](Real x) { return mytanh<Real>(x, args[0][0], args[0][1], args[0][2], args[0][3]); },
+                    [=](Real x) { return mytanh<Real>(x, args[1][0], args[1][1], args[1][2], args[1][3]); });
+            yaxis.init(diff.at(1), lims.at(1, 0), lims.at(1, 1),
+                    [=](Real x) { return mytanh<Real>(x, args[2][0], args[2][1], args[2][2], args[2][3]); },
+                    [=](Real x) { return mytanh<Real>(x, args[3][0], args[3][1], args[3][2], args[3][3]); });
+            zaxis.init(diff.at(2), lims.at(2, 0), lims.at(2, 1),
+                    [=](Real x) { return mytanh<Real>(x, args[4][0], args[4][1], args[4][2], args[4][3]); },
+                    [=](Real x) { return mytanh<Real>(x, args[5][0], args[5][1], args[5][2], args[5][3]); });
+        }
+
         py::array grid_sizes() const {
             py::array_t<size_t> result(std::array<size_t, 1>{3});
             auto ptr = result.mutable_data();
@@ -208,12 +231,14 @@ PYBIND11_MODULE(cartesian_mod, m) {
 
     py::class_<CartesianModCore<double>>(m, "CartesianModCore")
         .def(py::init<const py::array_t<double>, const py::array_t<double>>())
+        .def(py::init<const py::array_t<double>, const py::array_t<double>, const py::array_t<double>>())
         .def("to_cartesian", &CartesianModCore<double>::to_cartesian)
         .def("from_cartesian", &CartesianModCore<double>::from_cartesian)
         .def("grid_sizes", &CartesianModCore<double>::grid_sizes);
 
     py::class_<CartesianModCore<float>>(m, "CartesianModCoref")
         .def(py::init<const py::array_t<float>, const py::array_t<float>>())
+        .def(py::init<const py::array_t<float>, const py::array_t<float>, const py::array_t<float>>())
         .def("to_cartesian", &CartesianModCore<float>::to_cartesian)
         .def("from_cartesian", &CartesianModCore<float>::from_cartesian)
         .def("grid_sizes", &CartesianModCore<float>::grid_sizes);
