@@ -76,7 +76,7 @@ class FArray : public NdArray<T, N> {
         FArray() : Super() {
         }
 
-        FArray(const py::array_t<T> arr) : Super(arr) {
+        FArray(const py::array_t<T, py::array::forcecast> arr) : Super(arr) {
         }
 
         template<typename...F>

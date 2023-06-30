@@ -391,8 +391,8 @@ class NdIndices {
 };
 
 
-template<typename T>
-static inline std::vector<size_t> get_shape(const py::array_t<T> arr) {
+template<typename T, int flags>
+static inline std::vector<size_t> get_shape(const py::array_t<T, flags> arr) {
     size_t ndim = arr.ndim();
     std::vector<size_t> shape(ndim);
     for (auto i = 0; i < ndim; ++i) {
@@ -401,8 +401,8 @@ static inline std::vector<size_t> get_shape(const py::array_t<T> arr) {
     return shape;
 }
 
-template<typename T>
-static inline std::vector<size_t> get_strides(const py::array_t<T> arr) {
+template<typename T, int flags>
+static inline std::vector<size_t> get_strides(const py::array_t<T, flags> arr) {
     size_t ndim = arr.ndim();
     std::vector<size_t> strides(ndim);
     for (auto i = 0; i < ndim; ++i) {
@@ -411,8 +411,8 @@ static inline std::vector<size_t> get_strides(const py::array_t<T> arr) {
     return strides;
 }
 
-template<typename T>
-static inline size_t get_min_stride(const py::array_t<T> arr) {
+template<typename T, int flags>
+static inline size_t get_min_stride(const py::array_t<T, flags> arr) {
     size_t ndim = arr.ndim();
     size_t stride = sizeof(T);
     for (auto i = 0; i < ndim; ++i) {

@@ -3,6 +3,7 @@
 #include <vector>
 #include <cmath>
 #include <iostream>
+#include <interp/interp_poly.hpp>
 
 #include <search_tree.hpp>
 
@@ -24,7 +25,7 @@ class MeshCore {
             std::array<const Real*, 3> coords {
                 x.data(), y.data(), z.data() };
             size_t size = x.size();
-            st = SearchTree<Real>(coords, size);
+            search_tree = SearchTree<Real>(coords, size);
 
             for (auto i = 0; i < 3; ++i) {
                 for (auto j = 0; j < 2; ++j)
@@ -65,14 +66,14 @@ class MeshCore {
         }
 
         INLINE std::array<Real, 3> from_cartesian_one(Real x, Real y, Real z) {
-            auto indices = i2idx(st(std::array{x, y, z}));
+            auto indices = i2idx(search_tree(std::array{x, y, z}));
         }
 
         py::tuple to_cartesian(py::array_t<Real> p, py::array_t<Real> q, py::array_t<Real> w) const {
         }
 
     private:
-        SearchTree<Real> st;
+        SearchTree<Real> search_tree;
         std::array<std::array<Real, 2>, 3> pqw_lims;
         std::array<Real, 3> pqw_delta;
         std::array<int, 3> ax_order, shape;
