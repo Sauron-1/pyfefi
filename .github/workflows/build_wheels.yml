@@ -25,6 +25,7 @@ jobs:
         uses: pypa/cibuildwheel@v2.13.1
         env:
           CIBW_BUILD: ${{ matrix.python }}-${{ matrix.buildplat[1] }}
+          MARCH: core-avx2
 
       - name: Upload files to Artifacts
         uses: actions/upload-artifact@v3
