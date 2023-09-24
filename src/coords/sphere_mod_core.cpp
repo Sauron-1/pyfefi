@@ -97,7 +97,7 @@ class SphereModCore {
             size_t x_st = get_min_stride(x),
                    y_st = get_min_stride(y),
                    z_st = get_min_stride(z);
-#pragma omp parallel for
+#pragma omp parallel for schedule(guided)
             for (auto i = 0; i < size; ++i) {
                 Real _x = x_ptr[i*x_st],
                      _y = y_ptr[i*y_st],

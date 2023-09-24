@@ -58,7 +58,9 @@ class CMakeBuild(build_ext):
 
         cmake_args += ['-DCMAKE_BUILD_TYPE=' + cfg]
         march = env.pop('MARCH', 'native')
-        cmake_args += [f'-DMARCH={march}', '-DBUILD_PYTHON=ON', '-DINSTALL_CPP=OFF']
+        cmake_args += [f'-DMARCH={march}']
+        use_omp = env.pop('USE_OMP', 'ON')
+        cmake_args += [f'-DUSE_OPENMP={use_omp}']
 
         # CMakeLists.txt is in the same directory as this setup.py file
         cmake_list_dir = os.path.abspath(os.path.dirname(__file__))
@@ -79,21 +81,20 @@ class CMakeBuild(build_ext):
         build_temp = Path(self.build_temp).resolve()
         so_dir = build_temp / self.extensions[0].name
         # get current library path of ext
-        build_lib = Path(self.get_ext_fullpath(ext.name)).resolve().parent / self.extensions[0].name
-        # recursively copy all files in so_dir to build_lib/self.extensions[0].name using os.walk
-        for root, dirs, files in os.walk(so_dir):
-            for f in files:
-                src = Path(root) / f
-                dst = build_lib / f
-                self.copy_file(str(src), str(dst))
-        
+        build_lib = Path(self.get_ext_fullpath(ext.name)).resolve().parent
+        # recursively copy all files in so_dir to build_lib/self.extensions[0].name, keeping directory structure
+        for path in so_dir.rglob('*'):
+            if path.is_file():
+                dest_path = build_lib / path.relative_to(build_temp)
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                self.copy_file(path, dest_path.parent)
         
 ext_modules = [
     CMakeExtension('pyfefi'),
 ]
 
 setup(
-    name = 'picinterp',
+    name = 'pyfefi',
     version = '0.1',
     description = 'PIC shape function interpolate',
     author = 'Junyi Ren',

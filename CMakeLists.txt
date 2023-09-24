@@ -3,7 +3,9 @@ project(pyfefi)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 set(MARCH "native" CACHE STRING "Architecture to tell gcc to optimize for (-march)")
+option(USE_OPENMP ON)
 
 message("-- Compile for CPU ${MARCH}")
 
@@ -39,6 +41,13 @@ else()
     message("-- Found tuple_arithmetic ${tuple_arithmetic_VERSION}: ${tuple_arithmetic_INCLUDE_DIRS}")
 endif()
 
+if (USE_OPENMP)
+    find_package(OpenMP REQUIRED)
+    message("-- OpenMP found, version ${OpenMP_CXX_VERSION}")
+else()
+    message("-- OpenMP is disabled.")
+endif()
+
 function(add_submodule module)
     set(target_name ${module})
     string(REPLACE "." "/" modpath ${module})
@@ -57,6 +66,9 @@ function(add_submodule module)
     target_include_directories(${target_name} PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(${target_name} PRIVATE tuple_arithmetic)
     target_compile_options(${target_name} PRIVATE -O3 -ffast-math -DNDEBUG -march=${MARCH})
+    if (USE_OPENMP)
+        target_link_libraries(${target_name} PRIVATE OpenMP::OpenMP_CXX)
+    endif()
 
     if("${CMAKE_LIBRARY_OUTPUT_DIRECTORY}" STREQUAL "")
         set(outdir ${relpath})
