@@ -1,10 +1,11 @@
+#include <pyfefi.hpp>
 #include <array>
 #include <vector>
 
 #include <farray.hpp>
 #include <simd.hpp>
-#include <tuple_algebra/tuple_algebra.hpp>
 #include <rk.hpp>
+#include <tuple_arithmetic.hpp>
 
 #include <maybe_omp.hpp>
 
@@ -12,6 +13,7 @@
 //constexpr size_t N = 3;
 
 #define TRACE_LINE_OMP_SHEDULE dynamic
+#define TRACE_LINE_INTERP_ORDER 2
 
 template<typename T>
 struct TraceConfig {
@@ -22,7 +24,7 @@ struct TraceConfig {
       min_step,
       min_dist,
       term_val;
-    size_t max_iter;
+    int max_iter;
 
     void print() const {
         std::cout << "step_size: " << step_size << std::endl
@@ -43,32 +45,32 @@ class LineTracer {
         template<typename...Arr>
             requires( sizeof...(Arr) == N )
         LineTracer(const py::array_t<Arr, py::array::forcecast>&...arrs) {
-            std::assign(data, std::make_tuple(FArray<T, N>(arrs)...));
+            tpa::assign(data, std::make_tuple(FArray<T, N, TRACE_LINE_INTERP_ORDER>(arrs)...));
             for (auto i = 0; i < N; ++i)
                 delta[i] = 1;
             for (auto i = 0; i < N; ++i)
                 start[i] = 0;
-            scale = std::sqrt(std::dot(delta, delta)) / T(N);
+            scale = std::sqrt(tpa::dot(delta, delta)) / T(N);
         }
 
         template<typename...Arr>
             requires( sizeof...(Arr) == N+2 )
         LineTracer(const py::array_t<Arr, py::array::forcecast>&...arrs) {
             auto args = std::tie(arrs...);
-            auto args1 = std::firstN<N>(args);
-            std::assign(data,
-                    std::apply_unary_op([](auto& val) { return FArray<T, N>(val); },
+            auto args1 = tpa::firstN<N>(args);
+            tpa::assign(data,
+                    tpa::apply_unary_op([](auto& val) { return FArray<T, N, TRACE_LINE_INTERP_ORDER>(val); },
                         args1));
             for (auto i = 0; i < N; ++i) {
                 delta[i] = std::get<N>(args).at(i);
                 start[i] = std::get<N+1>(args).at(i);
             }
-            scale = std::sqrt(std::dot(delta, delta)) / T(N);
+            scale = std::sqrt(tpa::dot(delta, delta)) / T(N);
         }
 
         auto eval(std::array<T, N> coord) const {
             std::array<T, N> ret;
-            std::assign(coord, convert(coord));
+            tpa::assign(coord, convert(coord));
             for (auto i = 0; i < N; ++i) {
                 ret[i] = data[i](coord);
             }
@@ -77,8 +79,8 @@ class LineTracer {
 
         auto operator()([[maybe_unused]] T s, std::array<T, N> coord) const {
             std::array<T, N> ret = eval(coord);
-            T norm = std::sqrt(std::dot(ret, ret));
-            std::assign(ret, ret / norm);
+            T norm = std::sqrt(tpa::dot(ret, ret));
+            tpa::assign(ret, ret / norm);
             return ret;
         }
 
@@ -129,7 +131,7 @@ class LineTracer {
         template<typename Real, int dir=0>
         py::array trace_one_py(
                 py::array_t<T, py::array::forcecast> init,
-                Real step_size, Real tol, Real tol_rel, Real max_step, Real min_step, size_t max_iter, T min_dist, Real term_val) const {
+                Real step_size, Real tol, Real tol_rel, Real max_step, Real min_step, int max_iter, T min_dist, Real term_val) const {
             TraceConfig<T> cfg {
                 .step_size = T(step_size),
                 .tol = T(tol),
@@ -161,7 +163,7 @@ class LineTracer {
         template<typename Real>
         py::list trace_many(
                 py::array_t<T, py::array::forcecast> inits,
-                Real step_size, Real tol, Real tol_rel, Real max_step, Real min_step, size_t max_iter, T min_dist, Real term_val) const {
+                Real step_size, Real tol, Real tol_rel, Real max_step, Real min_step, int max_iter, T min_dist, Real term_val) const {
             if (inits.ndim() != 2 or inits.shape(1) != N) {
                 throw std::runtime_error("inits must be a (num_points, dim) array");
             }
@@ -199,7 +201,7 @@ class LineTracer {
         template<typename Real>
         py::array find_roots(
                 py::array_t<T, py::array::forcecast> inits,
-                Real step_size, Real tol, Real tol_rel, Real max_step, Real min_step, size_t max_iter, T min_dist, Real term_val) const {
+                Real step_size, Real tol, Real tol_rel, Real max_step, Real min_step, int max_iter, T min_dist, Real term_val) const {
             if (inits.ndim() != 2 or inits.shape(1) != N) {
                 throw std::runtime_error("inits must be a (num_points, dim) array");
             }
@@ -240,13 +242,13 @@ class LineTracer {
             
         bool terminate(std::array<T, N> coord, T term_val) const {
             std::array<T, N> coord_real;
-            std::assign(coord_real, convert(coord));
+            tpa::assign(coord_real, convert(coord));
             if (data[0].is_out(coord_real)) {
                 //std::cerr << "Terminating: out of bounds" << std::endl;
                 return true;
             }
             auto val = eval(coord);
-            T norm = std::sqrt(std::dot(val, val));
+            T norm = std::sqrt(tpa::dot(val, val));
             //if (norm < term_val) {
             //    std::cerr << "Terminating: zero field vector" << std::endl;
             //    for (auto i = 0; i < N; ++i)
@@ -259,23 +261,23 @@ class LineTracer {
             auto diff1 = init - p1;
             auto diff2 = init - p2;
             auto diff = p1 - p2;
-            auto d_i_p1_2 = std::dot(diff1, diff1);
-            if (std::dot(diff, diff1) < 0 and std::dot(diff, diff2) > 0) {
-                auto diff_norm = diff / std::sqrt(std::dot(diff, diff));
-                auto project = std::abs(std::dot(diff_norm, diff1));
+            auto d_i_p1_2 = tpa::dot(diff1, diff1);
+            if (tpa::dot(diff, diff1) < 0 and tpa::dot(diff, diff2) > 0) {
+                auto diff_norm = diff / std::sqrt(tpa::dot(diff, diff));
+                auto project = std::abs(tpa::dot(diff_norm, diff1));
                 return std::sqrt(d_i_p1_2 - project*project);
             }
             return std::sqrt(d_i_p1_2);
         }
 
     private:
-        std::array<FArray<T, N>, N> data;
+        std::array<FArray<T, N, TRACE_LINE_INTERP_ORDER>, N> data;
         std::array<T, N> delta, start;
         T scale;
 
         auto convert(std::array<T, N> coord) const {
             std::array<T, N> result;
-            std::assign(result, (coord - start) / delta);
+            tpa::assign(result, (coord - start) / delta);
             return result;
         }
 

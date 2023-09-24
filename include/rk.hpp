@@ -1,9 +1,10 @@
+#include <pyfefi.hpp>
 #include <array>
 #include <utility>
 #include <vector>
 #include <cmath>
 #include <iostream>
-#include <tuple_algebra/tuple_algebra.hpp>
+#include <tuple_arithmetic.hpp>
 
 using std::size_t;
 
@@ -59,20 +60,20 @@ class RungeKutta {
             std::array<T, N> tmp;
             ks[0] = fn(t, y);
             for (auto i = 1; i < order+2; ++i) {
-                std::assign(tmp, 0);
+                tpa::assign(tmp, 0);
                 for (auto j = 0; j < i; ++j)
-                    std::assign(tmp, tmp + args.a[i-1][j] * ks[j]);
-                std::assign(tmp, tmp * h + y);
-                std::assign(ks[i], fn(t + args.c[i-1] * h, tmp));
+                    tpa::assign(tmp, tmp + args.a[i-1][j] * ks[j]);
+                tpa::assign(tmp, tmp * h + y);
+                tpa::assign(ks[i], fn(t + args.c[i-1] * h, tmp));
             }
             std::array<T, N> result, err;
-            std::assign(result, 0);
-            std::assign(err, 0);
+            tpa::assign(result, 0);
+            tpa::assign(err, 0);
             for (auto i = 0;  i < order+2; ++i) {
-                std::assign(result, result + args.b[i] * ks[i]);
-                std::assign(err, err + (args.b[i] - args.bs[i]) * ks[i]);
+                tpa::assign(result, result + args.b[i] * ks[i]);
+                tpa::assign(err, err + (args.b[i] - args.bs[i]) * ks[i]);
             }
-            std::assign(result, result * h + y);
+            tpa::assign(result, result * h + y);
             T max_err = 0;
             T max_err_rel = 0;
             for (auto i = 0; i < N; ++i)
@@ -119,6 +120,21 @@ class RungeKutta {
                 if (h < min_step) h = min_step;
                 if (h > max_step) h = max_step;
             }
+            return std::make_pair(need_change, h);
+        }
+
+        auto estimate_step_size1(T h, T err, T tol, T max_step, T min_step) {
+            bool need_change = false;
+            if (err < 0.6 * tol and h < max_step) {
+                need_change = true;
+                h = h * 1.2;
+            }
+            if (err > tol and h > min_step) {
+                need_change = true;
+                h = h / 1.2;
+            }
+            if (h < min_step) h = min_step;
+            if (h > max_step) h = max_step;
             return std::make_pair(need_change, h);
         }
 

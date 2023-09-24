@@ -47,9 +47,9 @@ else:
         inits.append([factor*np.pi/3, factor*np.pi/3])
     inits = np.array(inits)
 
-    ls = lt.trace_many(inits, max_step=1e-1, term_val=1e-5, tol_rel=1e-5)
-    roots = lt.find_roots(inits, max_step=1e-1, term_val=1e-5, tol_rel=1e-5)
-    print(roots)
+    ls = lt.trace_many(inits, max_step=100, term_val=1e-9, tol_rel=1e-5)
+    #roots = lt.find_roots(inits, max_step=1e-1, term_val=1e-5, tol_rel=1e-5)
+    #print(roots)
     for i in range(len(inits)):
         l = ls[i]
         init = inits[i]

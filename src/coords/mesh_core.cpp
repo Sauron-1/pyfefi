@@ -3,7 +3,6 @@
 #include <vector>
 #include <cmath>
 #include <iostream>
-#include <interp/interp_poly.hpp>
 
 #include <search_tree.hpp>
 

@@ -17,30 +17,6 @@ namespace detail {
     template<typename...F> struct max_float<float, F...> { using type = typename max_float<F...>::type; };
     template<typename F1, typename...F> using max_float_t = typename max_float<F1, F...>::type;
 
-    /*
-    template<size_t N, size_t dim>
-    constexpr auto cartesian_prod() {
-        constexpr size_t size = powi<dim>(N);
-        std::array<std::array<size_t, dim>, size> result;
-        size_t block_len = size;
-        for (auto d = 0; d < dim; ++d) {
-            block_len /= N;
-            auto num_blocks = size / N / block_len;
-            auto block_space = size / num_blocks;
-            for (auto b = 0; b < num_blocks; ++b) {
-                auto start = block_space * b;
-                for (auto i = 0; i < N; ++i) {
-                    for (auto idx = 0; idx < block_len; ++idx) {
-                        auto index = i * block_len + idx + start;
-                        result[index][d] = i;
-                    }
-                }
-            }
-        }
-        return result;
-    }
-    */
-
     template<size_t N, size_t dim>
     constexpr auto cartesian_prod_impl() {
         constexpr size_t size = powi<dim>(N);
@@ -67,7 +43,7 @@ namespace detail {
     static constexpr auto cartesian_prod = cartesian_prod_impl<N, dim>();
 }
 
-template<typename T, size_t N>
+template<typename T, size_t N, size_t interp_order=2>
 class FArray : public NdArray<T, N> {
 
     public:
@@ -88,7 +64,7 @@ class FArray : public NdArray<T, N> {
         INLINE T operator()(std::array<T, N> coords) const {
             auto [wt, idx] = to_weight_idx(coords);
             T ret = T(0);
-            constexpr auto cp = detail::cartesian_prod<3, N>;
+            constexpr auto cp = detail::cartesian_prod<interp_order+1, N>;
             std::array<size_t, N> indices;
             for (auto iN : cp) {
                 T w = T(1);
@@ -113,8 +89,8 @@ class FArray : public NdArray<T, N> {
         using Super::shape_;
 
         INLINE auto to_weight_idx(std::array<T, N> coords) const {
-            std::array<std::array<T, 3>, N> weights;
-            std::array<std::array<int, 3>, N> indices;
+            std::array<std::array<T, interp_order+1>, N> weights;
+            std::array<std::array<int, interp_order+1>, N> indices;
             for (auto i = 0; i < N; ++i) {
                 auto [wt, idx] = to_weight_idx_one(coords[i], shape_[i]);
                 weights[i] = wt;
@@ -124,19 +100,34 @@ class FArray : public NdArray<T, N> {
         }
 
         INLINE auto to_weight_idx_one(T coord, int size) const {
-            int idx = std::round(coord);
-            T delta = coord - T(idx);
-            std::array<T, 3> weights {
-                T(0.5 * (0.5 - delta) * (0.5 - delta)),
-                T(0.75  - delta * delta),
-                T(0.5 * (0.5 + delta) * (0.5 + delta))
-            };
-            std::array<int, 3> indices {
-                limit(idx-1, size),
-                limit(idx, size),
-                limit(idx+1, size),
-            };
-            return std::make_pair(weights, indices);
+            if constexpr (interp_order == 1) {
+                int idx = std::floor(coord);
+                T delta = coord - T(idx);
+                std::array<T, 2> weights {
+                    T(1.0 - delta),
+                    T(delta)
+                };
+                std::array<int, 2> indices {
+                    limit(idx, size),
+                    limit(idx+1, size),
+                };
+                return std::make_pair(weights, indices);
+            }
+            else {
+                int idx = std::round(coord);
+                T delta = coord - T(idx);
+                std::array<T, 3> weights {
+                    T(0.5 * (0.5 - delta) * (0.5 - delta)),
+                    T(0.75  - delta * delta),
+                    T(0.5 * (0.5 + delta) * (0.5 + delta))
+                };
+                std::array<int, 3> indices {
+                    limit(idx-1, size),
+                    limit(idx, size),
+                    limit(idx+1, size),
+                };
+                return std::make_pair(weights, indices);
+            }
         }
 
         INLINE auto limit(int val, int size) const {
