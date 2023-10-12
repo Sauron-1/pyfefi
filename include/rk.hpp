@@ -116,6 +116,7 @@ class RungeKutta {
             if (err > tol and h > min_step)
                 need_change = true;
             if (need_change) {
+                err = std::max(err, T(0.2*tol));
                 h = h * pow(0.8 * tol / err, 1./(order+1));
                 if (h < min_step) h = min_step;
                 if (h > max_step) h = max_step;

@@ -72,6 +72,7 @@ class FArray : public NdArray<T, N> {
                     w *= wt[i][iN[i]];
                     indices[i] = idx[i][iN[i]];
                 }
+                //check_bounds(indices, shape_, "Inside FArray");
                 ret += Super::get(indices) * w;
             }
             return ret;
@@ -139,7 +140,7 @@ class FArray : public NdArray<T, N> {
         }
 
         INLINE auto is_out_one(T val, int size) const {
-            return val < 1 || val >= size-2;
+            return my_isnan(val) || val < 1 || val >= size-2;
         }
 
 };

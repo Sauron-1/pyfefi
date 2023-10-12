@@ -3,6 +3,7 @@
 #include <iostream>
 #include <array>
 #include <tuple_arithmetic.hpp>
+#include <tuple_math.hpp>
 #include <cmath>
 
 using std::size_t;
@@ -25,6 +26,10 @@ class TraceGrid {
                 strides[N-1] = 1;
                 for (auto i = 1; i < N; ++i)
                     strides[N-i-1] = strides[N-i] * shape[N-i];
+
+                m_size = 1;
+                for (auto s : shape)
+                    m_size *= s;
             }
 
         template<typename Pos>
@@ -43,12 +48,7 @@ class TraceGrid {
             return pos;
         }
 
-        size_t size() const {
-            auto ret = 1;
-            for (auto s : shape)
-                ret *= s;
-            return ret;
-        }
+        size_t size() const { return m_size; }
 
         template<typename...Idx>
             requires(sizeof...(Idx) == N)
@@ -71,19 +71,27 @@ class TraceGrid {
         }
 
         void set_line(T val, farr s, farr e) {
+            using tpa::operator<;
+            using tpa::operator<=;
             s = (s - start) / scale;
             e = (e - start) / scale;
+            double zero = 1e-10;
 
             farr dir = e - s;
-            dir = dir / std::sqrt(tpa::dot(dir, dir));
+            auto len = std::sqrt(tpa::dot(dir, dir));
+            if (len <= zero) return;
+            dir = dir / len;
             farr cur = s;
             iarr dir_sign = tpa::apply_unary_op(
-                    [](auto a) { return a < 0.0 ? -1 : 1; }, dir);
-            auto dir_is_zero = std::abs(dir_sign) < 1e-10;
-            while (tpa::dot(e - cur, dir) > 0) {
-                ptr[to_idx1(cur)] = val;
+                    [zero](auto a) { return a < -zero ? -1 : ( a > zero ? 1 : 0 ); }, dir);
+            auto dir_is_zero = tpa::abs(dir_sign) <= zero;
+            while (tpa::dot(e - cur, dir) > -1) {
+                auto idx = to_idx1(cur);
+                if (idx >= 0 || idx < m_size)
+                    ptr[idx] = val;
+
                 auto next_i = tpa::cast<int>(cur + dir_sign);
-                auto t = select(dir_is_zero, 1e20, (next_i - cur) / dir);
+                auto t = select(dir_is_zero, tpa::repeat_as(1e20, next_i), (next_i - cur) / dir);
                 Float min_t = tpa::reduce(
                         [](auto a, auto b) { return std::min(Float(a), Float(b)); },
                         t);
@@ -91,10 +99,24 @@ class TraceGrid {
             }
         }
 
+        void set_lines(T val, std::vector<farr> line, std::array<size_t, 2> skips=std::array<size_t, 2>{0, 0}) {
+            for (auto i = skips[0]; i < line.size()-skips[1]-1; ++i) {
+                set_line(val, line[i], line[i+1]);
+            }
+        }
+
+        size_t get_total() const {
+            size_t total = 0;
+            for (auto i = 0; i < m_size; ++i)
+                if (ptr[i] != 0) ++total;
+            return total;
+        }
+
     private:
         T *ptr;
         farr start, scale;
         iarr shape, strides;
+        size_t m_size;
 
         template<typename Pos>
         int to_idx1(Pos&& pos) const {

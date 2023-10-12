@@ -1,6 +1,7 @@
 #include <array>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <stdexcept>
 #include <type_traits>
 
 #include <iostream>
@@ -241,7 +242,7 @@ class NdArray {
         void check_bounds(std::array<size_t, N> idx) const {
             for (size_t i = 0; i < N; ++i) {
                 if (idx[i] >= shape_[i] || idx[i] < 0) [[unlikely]] {
-                    std::cerr << "Index " << idx[i] << " out of bounds for dimension " << i << " (shape = " << shape_[i] << ")" << std::endl;
+                    std::cerr << "Index " << idx[i] << " out of bounds for dimension " << i << " (shape = " << shape_[i] << ") when accessing with scalar" << std::endl;
                     exit(1);
                 }
             }
@@ -255,7 +256,7 @@ class NdArray {
                 if (horizontal_or(msk)) [[unlikely]] {
                     for (size_t j = 0; j < simd_len; ++j) {
                         if (msk[j]) {
-                            std::cerr << "Index " << idx[i][j] << " out of bounds for dimension " << i << " (shape = " << shape_[i] << ")" << std::endl;
+                            std::cerr << "Index " << idx[i][j] << " out of bounds for dimension " << i << " (shape = " << shape_[i] << ") when accessing with vector" << std::endl;
                             exit(1);
                         }
                     }
@@ -358,6 +359,7 @@ class NdIndices {
         }
 
         template<typename iSimd>
+            requires(not std::is_scalar_v<iSimd>)
         INLINE auto i2idx(iSimd i) {
             std::array<iSimd, N> ret;
             for (auto j = 0; j < N; ++j) {
