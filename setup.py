@@ -95,7 +95,7 @@ ext_modules = [
 
 setup(
     name = 'pyfefi',
-    version = '0.1',
+    version = '0.2.0',
     description = 'PIC shape function interpolate',
     author = 'Junyi Ren',
     packages = find_packages(),

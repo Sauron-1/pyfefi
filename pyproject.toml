@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyfefi"
-version = "0.0.1"
+version = "0.2.0"
 description = "Python post processor for fefi code"
 authors = [
     {name = "Junyi Ren", email = "j.y.ren9871@gmail.com" }
