@@ -41,6 +41,7 @@ class CMakeBuild(build_ext):
         ]
 
         cfg = 'Debug' if self.debug else 'Release'
+        #cfg = 'Debug'
         build_args = ['--config', cfg]
 
         # Assuming Makefiles
@@ -96,7 +97,7 @@ ext_modules = [
 setup(
     name = 'pyfefi',
     version = '0.2.0',
-    description = 'PIC shape function interpolate',
+    description = 'Fefi data processing',
     author = 'Junyi Ren',
     packages = find_packages(),
     ext_modules = ext_modules,

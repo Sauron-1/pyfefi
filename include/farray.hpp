@@ -86,6 +86,11 @@ class FArray : public NdArray<T, N> {
             return false;
         }
 
+        INLINE auto& operator()(FArray<T, N, interp_order>& other) {
+            Super::operator=(static_cast<Super>(other));
+            return *this;
+        }
+
     protected:
         using Super::shape_;
 

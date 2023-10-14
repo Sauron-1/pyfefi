@@ -41,7 +41,7 @@ inline void check_bounds(const std::array<T, N>& idx, const std::array<size_t, N
         if (idx[i] >= shape[i] || idx[i] < 0) [[unlikely]] {
             std::cerr << msg << std::endl <<
                 "Index " << idx[i] << " out of bounds for dimension " << i <<
-                " (shape = " << shape[i] << ") when accessing with scalar" << std::endl;
+                " (shape = " << shape[i] << "). Explicitly check bound." << std::endl;
             exit(1);
         }
     }

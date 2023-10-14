@@ -182,7 +182,7 @@ static auto lic_kernel_para(
     constexpr size_t simd_len = simd_length<Simd>;
     NdIndices nd(results.shape());
     size_t num_packs = nd.size() / simd_len;
-#pragma omp parallel for
+//#pragma omp parallel for
     for (auto i = 0; i < num_packs; ++i) {
         std::array<Int, simd_len> buf;
         bSimd msk = true;

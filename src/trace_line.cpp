@@ -1,3 +1,4 @@
+#define PYBIND11_NO_ASSERT_GIL_HELD_INCREF_DECREF
 #include <pyfefi.hpp>
 #include <array>
 #include <vector>
@@ -10,6 +11,7 @@
 #include <random>
 
 #include <maybe_omp.hpp>
+#include <picinterp.hpp>
 #include "trace_grid.hpp"
 
 //using T = double;
@@ -47,42 +49,67 @@ class LineTracer {
     public:
         template<typename...Arr>
             requires( sizeof...(Arr) == N )
-        LineTracer(const py::array_t<Arr, py::array::forcecast>&...arrs) {
-            tpa::assign(data, std::make_tuple(FArray<T, N, TRACE_LINE_INTERP_ORDER>(arrs)...));
+        LineTracer(const py::array_t<Arr, py::array::forcecast>&...arrs) : m_data{NdArray<T, N>(arrs)...} {
+            //tpa::assign(data, std::make_tuple(FArray<T, N, TRACE_LINE_INTERP_ORDER>(arrs)...));
             for (auto i = 0; i < N; ++i)
                 delta[i] = 1;
             for (auto i = 0; i < N; ++i)
                 start[i] = 0;
             scale = std::sqrt(tpa::dot(delta, delta)) / T(N);
+
+            const auto& arr0 = std::get<0>(std::tie(arrs...));
+            for (auto i = 0; i < N; ++i)
+                m_shape[i] = arr0.shape(i);
+            m_size = tpa::prod(m_shape);
         }
 
         template<typename...Arr>
-            requires( sizeof...(Arr) == N+2 )
+            requires( sizeof...(Arr) == N + 2 )
         LineTracer(const py::array_t<Arr, py::array::forcecast>&...arrs) {
             auto args = std::tie(arrs...);
             auto args1 = tpa::firstN<N>(args);
-            tpa::assign(data,
-                    tpa::apply_unary_op([](auto& val) { return FArray<T, N, TRACE_LINE_INTERP_ORDER>(val); },
-                        args1));
+            constexpr_for<0, N, 1>([this, &args1](auto I) {
+                //data[I] = FArray<T, N, TRACE_LINE_INTERP_ORDER>(std::get<I>(args1));
+                m_data[I] = NdArray<T, N>(std::get<I>(args1));
+            });
+
             for (auto i = 0; i < N; ++i) {
                 delta[i] = std::get<N>(args).at(i);
                 start[i] = std::get<N+1>(args).at(i);
             }
             scale = std::sqrt(tpa::dot(delta, delta)) / T(N);
+
+            const auto& arr0 = std::get<0>(args1);
+            for (auto i = 0; i < N; ++i)
+                m_shape[i] = arr0.shape(i);
+            m_size = tpa::prod(m_shape);
         }
 
         auto eval(std::array<T, N> coord) const {
             std::array<T, N> ret;
             tpa::assign(coord, convert(coord));
+            limit_bound(coord);
+            //check_bounds(coord, m_shape, "In eval, checking float");
+            /*
+            for (auto i = 0; i < N; ++i)
+                std::cout << coord[i] << " ";
+            std::cout << ", ";
+            for (auto i = 0; i < N; ++i)
+                std::cout << m_shape[i] << " ";
+            std::cout << std::endl;
+            std::cout << std::endl;
+            */
+            //Interp interp(coord, m_shape);
+            Interp interp(coord);
             for (auto i = 0; i < N; ++i) {
-                ret[i] = data[i](coord);
+                ret[i] = interp.gather(m_data[i]);
             }
             return ret;
         }
 
         auto operator()([[maybe_unused]] T s, std::array<T, N> coord) const {
             std::array<T, N> ret = eval(coord);
-            T norm = std::sqrt(tpa::dot(ret, ret));
+            T norm = std::max(std::sqrt(tpa::dot(ret, ret)), T(1e-10));
             tpa::assign(ret, ret / norm);
             return ret;
         }
@@ -103,11 +130,14 @@ class LineTracer {
             result.push_back(init);
             while (not terminate(result.back()) and --cfg.max_iter > 0) {
                 auto [res, real_step] = step<neg>(result.back(), cfg);
+                bool has_nan = false;
+                for (auto r : res) has_nan |= my_isnan(r);
+                if (has_nan) break;
                 cfg.step_size = real_step;
                 result.push_back(res);
-                if (cfg.min_dist > 0) {
+                if (cfg.min_dist > 0 and result.size() > 10) {
                     auto d = dist(init, result.back(), result[result.size()-2]);
-                    if (result.size() > 10 and d < cfg.min_dist)
+                    if (d < cfg.min_dist)
                         break;
                 }
             }
@@ -124,7 +154,10 @@ class LineTracer {
                    len_pos = res_pos.size();
             size_t length = len_neg + len_pos - 1;
             res_pos.resize(length);
+            //printf("Traced line length: %ld, %ld, total %ld\n", len_neg, len_pos, length);
             // move the positive part to the end of the vector
+            if (len_neg == 1)
+                return res_pos;
             std::move_backward(res_pos.begin(), res_pos.begin() + len_pos, res_pos.end());
             // reverse the negative part and copy them to the beginning of the vector
             std::reverse(res_neg.begin(), res_neg.end());
@@ -146,20 +179,20 @@ class LineTracer {
                 .term_val = T(term_val),
                 .max_iter = max_iter,
             };
-            cfg.print();
+            //cfg.print();
             std::array<T, N> coords;
             for (auto i = 0; i < N; ++i)
                 coords[i] = init.at(i);
             if constexpr (dir == 0) {
-                auto result = bidir_trace(coords, cfg, [this, &cfg](auto& pos) { return terminate(pos, cfg.term_val); });
+                auto result = bidir_trace(coords, cfg, [this, term_val](auto& pos) { return terminate(pos, term_val); });
                 return to_numpy(result);
             }
             else if constexpr (dir == 1) {
-                auto result = trace<false>(coords, cfg, [this, &cfg](auto& pos) { return terminate(pos, cfg.term_val); });
+                auto result = trace<false>(coords, cfg, [this, term_val](auto& pos) { return terminate(pos, term_val); });
                 return to_numpy(result);
             }
             else if constexpr (dir == -1) {
-                auto result = trace<true>(coords, cfg, [this, &cfg](auto& pos) { return terminate(pos, cfg.term_val); });
+                auto result = trace<true>(coords, cfg, [this, term_val](auto& pos) { return terminate(pos, term_val); });
                 return to_numpy(result);
             }
         }
@@ -188,9 +221,9 @@ class LineTracer {
                     coords[i][j] = inits.at(i, j);
 
             std::vector<py::array> results(num_points);
-#pragma omp parallel for schedule(TRACE_LINE_OMP_SHEDULE)
+#pragma omp parallel for schedule(TRACE_LINE_OMP_SHEDULE) default(shared)
             for (auto i = 0; i < num_points; ++i) {
-                auto result = bidir_trace(coords[i], cfg, [this, &cfg](auto& pos) { return terminate(pos, cfg.term_val); });
+                auto result = bidir_trace(coords[i], cfg, [this, term_val](auto& pos) { return terminate(pos, term_val); });
                 results[i] = to_numpy(result);
             }
 
@@ -228,10 +261,10 @@ class LineTracer {
             std::array<size_t, 3> result_shape{ num_points, 4, N };
             py::array_t<T> result(result_shape);
             T* ptr = result.mutable_data();
-#pragma omp parallel for schedule(TRACE_LINE_OMP_SHEDULE)
+#pragma omp parallel for schedule(TRACE_LINE_OMP_SHEDULE) default(shared)
             for (auto i = 0; i < num_points; ++i) {
-                auto pos = trace<false>(coords[i], cfg, [this, &cfg](auto& pos) { return terminate(pos, cfg.term_val); });
-                auto neg = trace<true>(coords[i], cfg, [this, &cfg](auto& pos) { return terminate(pos, cfg.term_val); });
+                auto pos = trace<false>(coords[i], cfg, [this, term_val](auto& pos) { return terminate(pos, term_val); });
+                auto neg = trace<true>(coords[i], cfg, [this, term_val](auto& pos) { return terminate(pos, term_val); });
                 for (auto j = 0; j < 2; ++j)
                     if (j < neg.size())
                         for (auto d = 0; d < N; ++d)
@@ -252,7 +285,7 @@ class LineTracer {
                 size_t report_num) const {
             if (inner_flags.ndim() != N)
                 throw std::invalid_argument("inner_flags must have dimension " + std::to_string(N));
-            const std::array<size_t, N> shape = data[0].shape();
+            const std::array<size_t, N> shape = m_shape;
             for (auto i = 0u; i < N; ++i)
                 if (inner_flags.shape(i) != shape[i])
                     throw std::invalid_argument("size of dimension " + std::to_string(i) + " of inner_flag does not match.");
@@ -277,13 +310,14 @@ class LineTracer {
 
             auto result_ptr = result.mutable_data();
             for (auto i = 0; i < result.size(); ++i)
-                result_ptr[i] = 0u;
+                result_ptr[i] = 0;
 
-            auto term_fn = [this, &flags, &cfg, &shape, &trace_flags_arr](auto& pos) {
-                bool term_zero = terminate(pos, cfg.term_val);
+            auto term_fn = [this, &flags, term_val, &shape, &trace_flags_arr](auto& pos) {
+                bool term_zero = terminate(pos, term_val);
                 if (term_zero)
                     return true;
                 auto ipos = tpa::cast<int>(convert(pos));
+                //check_bounds(ipos, shape, "In term_fn");
                 return std::apply(flags, ipos) > 0 || std::apply(trace_flags_arr, ipos) == 0;
             };
 
@@ -303,7 +337,7 @@ class LineTracer {
 
             for (auto seg = 0u; seg < total_points; seg += report_num) {
 
-#pragma omp parallel for schedule(TRACE_LINE_OMP_SHEDULE)
+#pragma omp parallel for schedule(TRACE_LINE_OMP_SHEDULE) default(shared)
             for (auto i = seg; i < seg+report_num; ++i) {
                 if (i >= total_points) continue;
             //for (auto i = 0u; i < indices.size(); ++i) {
@@ -318,12 +352,15 @@ class LineTracer {
                 auto line = bidir_trace(seed, cfg, term_fn);
                 std::array<size_t, 2> skips{0, 0};
                 size_t line_len = line.size();
+
                 if (line_len < 4)
                     continue;
-                while (my_isnan(line[skips[0]][0]) and skips[0] < line_len)
+
+                while (not in_bound(convert(line[skips[0]])) and skips[0] < line_len)
                     skips[0] += 1;
-                while (my_isnan(line[line_len-skips[1]-1][0]) and skips[1] < line_len)
+                while (not in_bound(convert(line[line_len-skips[1]-1])) and skips[1] < line_len)
                     skips[1] += 1;
+
                 if (skips[0] >= line_len or skips[1] >= line_len or skips[0]+skips[1] >= line_len-1)
                     continue;
                 bool closed = is_close(line[skips[0]]) and is_close(line[line_len-skips[1]-1]);
@@ -342,9 +379,11 @@ class LineTracer {
         bool terminate(std::array<T, N> coord, T term_val) const {
             std::array<T, N> coord_real;
             tpa::assign(coord_real, convert(coord));
-            if (data[0].is_out(coord_real)) {
+            //if (data[0].is_out(coord_real)) {
+            //    return true;
+            //}
+            if (not in_bound(coord_real))
                 return true;
-            }
             auto val = eval(coord);
             T norm = std::sqrt(tpa::dot(val, val));
             return norm < term_val;
@@ -356,7 +395,7 @@ class LineTracer {
             auto diff = p1 - p2;
             auto d_i_p1_2 = tpa::dot(diff1, diff1);
             if (tpa::dot(diff, diff1) < 0 and tpa::dot(diff, diff2) > 0) {
-                auto diff_norm = diff / std::sqrt(tpa::dot(diff, diff));
+                auto diff_norm = diff / std::max(std::sqrt(tpa::dot(diff, diff)), T(1e-10));
                 auto project = std::abs(tpa::dot(diff_norm, diff1));
                 return std::sqrt(d_i_p1_2 - project*project);
             }
@@ -364,25 +403,48 @@ class LineTracer {
         }
 
     private:
-        std::array<FArray<T, N, TRACE_LINE_INTERP_ORDER>, N> data;
+        using data_t = NdArray<T, N>;
+        //using Interp = picinterp_cb::InterpolatorV<0, N, TRACE_LINE_INTERP_ORDER, T, int>;
+        using Interp = picinterp::InterpolatorV<0, N, TRACE_LINE_INTERP_ORDER, T, int>;
+        std::array<data_t, N> m_data;
+        //std::array<FArray<T, N, TRACE_LINE_INTERP_ORDER>, N> data;
         std::array<T, N> delta, start;
+        std::array<size_t, N> m_shape;
         T scale;
+        size_t m_size;
 
-        auto convert(std::array<T, N> coord) const {
+        template<typename Pos>
+        FORCE_INLINE bool in_bound(const Pos& arr) const {
+            constexpr int buf = TRACE_LINE_INTERP_ORDER + 1;
+            bool in = true;
+            for (auto i = 0; i < N; ++i)
+                in = in and arr[i] >= buf and arr[i] < m_shape[i] - buf and not my_isnan(arr[i]);
+            return in;
+        }
+
+        template<typename P>
+        FORCE_INLINE auto limit_bound(std::array<P, N>& arr) const {
+            constexpr int buf = TRACE_LINE_INTERP_ORDER + 1;
+            for (auto i = 0; i < N; ++i) {
+                if (int(arr[i]) < buf) arr[i] = buf;
+                if (int(arr[i]) >= m_shape[i]-buf) arr[i] = m_shape[i] - buf - 1;
+            }
+            return arr;
+        }
+
+        FORCE_INLINE auto convert(std::array<T, N> coord) const {
             std::array<T, N> result;
             tpa::assign(result, (coord - start) / delta);
             return result;
         }
 
-        py::array to_numpy(std::vector<std::array<T, N>> coords) const {
+        py::array to_numpy(const std::vector<std::array<T, N>>& coords) const {
             std::array<size_t, 2> shape{ coords.size(), N };
             py::array_t<T> result(shape);
             T* ptr = result.mutable_data();
-            for (auto i = 0; i < coords.size(); ++i) {
-                for (auto j = 0; j < N; ++j) {
+            for (auto i = 0; i < coords.size(); ++i)
+                for (auto j = 0; j < N; ++j)
                     ptr[i*N + j] = coords[i][j];
-                }
-            }
             return result;
         }
 
@@ -426,13 +488,14 @@ PYBIND11_MODULE(line_tracer, m) {
         .def(py::init<const arg_t, const arg_t, const arg_t,
                 const arg_t, const arg_t>(),
                 py::arg("vx"), py::arg("vy"), py::arg("vz"), py::arg("delta"), py::arg("start"))
-        .def("trace", &LineTracer<float, 3>::trace_one_py<double, 0>, DEFAULTS)
         .def("trace", &LineTracer<float, 3>::trace_one_py<float, 0>, DEFAULTS)
+        //.def("trace", &LineTracer<float, 3>::trace_one_py<double, 0>, DEFAULTS)
         .def("trace_many", &LineTracer<float, 3>::trace_many<float>, DEFAULTS)
-        .def("trace_many", &LineTracer<float, 3>::trace_many<double>, DEFAULTS)
+        //.def("trace_many", &LineTracer<float, 3>::trace_many<double>, DEFAULTS)
         .def("find_roots", &LineTracer<float, 3>::find_roots<float>, DEFAULTS)
-        .def("find_roots", &LineTracer<float, 3>::find_roots<double>, DEFAULTS)
+        //.def("find_roots", &LineTracer<float, 3>::find_roots<double>, DEFAULTS)
         .def("find_open_close", &LineTracer<float, 3>::find_open_close<float>, py::arg("inner_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u)
-        .def("find_open_close", &LineTracer<float, 3>::find_open_close<double>, py::arg("inner_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u);
+        //.def("find_open_close", &LineTracer<float, 3>::find_open_close<double>, py::arg("inner_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u)
+        ;
 
 }

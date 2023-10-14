@@ -66,7 +66,7 @@ static auto INLINE convert(Simd i) {
 #ifndef CONSTEXPR_FOR
 #define CONSTEXPR_FOR
 template<auto Start, auto End, auto Inc, typename Fn, typename...Args>
-    requires( Start >= End or std::invocable<Fn, std::integral_constant<decltype(Start), Start>, Args...> )
+    requires( Start <= End or std::invocable<Fn, std::integral_constant<decltype(Start), Start>, Args...> )
 INLINE constexpr void constexpr_for(Fn&& fn, Args&&...args) {
     if constexpr (Start < End) {
         std::invoke(std::forward<Fn>(fn), std::integral_constant<decltype(Start), Start>{}, std::forward<Args>(args)...);

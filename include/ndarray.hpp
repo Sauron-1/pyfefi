@@ -87,6 +87,21 @@ class NdArray {
             }
         }
 
+        NdArray(const NdArray<T, N>& other) {
+            data_ = other.data();
+            shape_ = other.shape();
+            strides_ = other.strides();
+            allocated_data_ = false;
+        }
+
+        auto& operator=(const NdArray<T, N>& other) {
+            data_ = other.data();
+            shape_ = other.shape();
+            strides_ = other.strides();
+            allocated_data_ = false;
+            return *this;
+        }
+
         ~NdArray() {
             if (allocated_data_) {
                 delete[] data_;
@@ -172,6 +187,8 @@ class NdArray {
         INLINE size_t shape(size_t i) const {
             return shape_[i];
         }
+        INLINE const auto& strides() const { return strides_; }
+        INLINE auto data() const { return data_; }
 
         INLINE size_t size() const {
             return shape_[0] * strides_[0];

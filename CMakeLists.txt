@@ -41,6 +41,23 @@ else()
     message("-- Found tuple_arithmetic ${tuple_arithmetic_VERSION}: ${tuple_arithmetic_INCLUDE_DIRS}")
 endif()
 
+find_package(picinterp QUIET)
+if (NOT picinterp_FOUND)
+    message("-- picinterp not found. Downloading...")
+    include(FetchContent)
+    FetchContent_Declare(
+        picinterp
+        GIT_REPOSITORY https://github.com/Sauron-1/picinterp.git
+        GIT_TAG        master
+        )
+    set(BULID_TESTS_TMP ${BUILD_TESTS})
+    set(BUILD_TESTS OFF)
+    FetchContent_MakeAvailable(picinterp)
+    set(BUILD_TESTS ${BULID_TESTS_TMP})
+else()
+    message("-- Found picinterp ${picinterp_VERSION}: ${picinterp_INCLUDE_DIRS}")
+endif()
+
 if (USE_OPENMP)
     find_package(OpenMP REQUIRED)
     message("-- OpenMP found, version ${OpenMP_CXX_VERSION}")
@@ -65,7 +82,9 @@ function(add_submodule module)
     pybind11_add_module(${target_name} ${ARGV})
     target_include_directories(${target_name} PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(${target_name} PRIVATE tuple_arithmetic)
+    target_link_libraries(${target_name} PRIVATE picinterp)
     target_compile_options(${target_name} PRIVATE -O3 -ffast-math -DNDEBUG -march=${MARCH})
+    #target_compile_options(${target_name} PRIVATE -O3 -g -ffast-math -march=${MARCH} -DBOUNDSCHECK -g -Wall -Wextra -Wno-sign-compare)
     if (USE_OPENMP)
         target_link_libraries(${target_name} PRIVATE OpenMP::OpenMP_CXX)
     endif()
