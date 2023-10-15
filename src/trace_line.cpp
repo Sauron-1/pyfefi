@@ -1,21 +1,24 @@
-#define PYBIND11_NO_ASSERT_GIL_HELD_INCREF_DECREF
 #include <pyfefi.hpp>
+#include <ndarray.hpp>
+#include <utils.hpp>
 #include <array>
 #include <vector>
 
-#include <farray.hpp>
 #include <simd.hpp>
 #include <rk.hpp>
 #include <tuple_arithmetic.hpp>
 #include <algorithm>
 #include <random>
 
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <pybind11/numpy.h>
+
 #include <maybe_omp.hpp>
 #include <picinterp.hpp>
 #include "trace_grid.hpp"
 
-//using T = double;
-//constexpr size_t N = 3;
+namespace py = pybind11;
 
 #define TRACE_LINE_OMP_SHEDULE dynamic
 #define TRACE_LINE_INTERP_ORDER 2
@@ -50,7 +53,6 @@ class LineTracer {
         template<typename...Arr>
             requires( sizeof...(Arr) == N )
         LineTracer(const py::array_t<Arr, py::array::forcecast>&...arrs) : m_data{NdArray<T, N>(arrs)...} {
-            //tpa::assign(data, std::make_tuple(FArray<T, N, TRACE_LINE_INTERP_ORDER>(arrs)...));
             for (auto i = 0; i < N; ++i)
                 delta[i] = 1;
             for (auto i = 0; i < N; ++i)
@@ -69,7 +71,6 @@ class LineTracer {
             auto args = std::tie(arrs...);
             auto args1 = tpa::firstN<N>(args);
             constexpr_for<0, N, 1>([this, &args1](auto I) {
-                //data[I] = FArray<T, N, TRACE_LINE_INTERP_ORDER>(std::get<I>(args1));
                 m_data[I] = NdArray<T, N>(std::get<I>(args1));
             });
 
@@ -99,7 +100,6 @@ class LineTracer {
             std::cout << std::endl;
             std::cout << std::endl;
             */
-            //Interp interp(coord, m_shape);
             Interp interp(coord);
             for (auto i = 0; i < N; ++i) {
                 ret[i] = interp.gather(m_data[i]);
@@ -335,42 +335,54 @@ class LineTracer {
 
             if (report_num == 0) report_num = total_points;
 
+            std::vector<size_t> traced_num_thread(omp_get_max_threads());
+            for (auto& tn : traced_num_thread) tn = 0;
+
             for (auto seg = 0u; seg < total_points; seg += report_num) {
-
 #pragma omp parallel for schedule(TRACE_LINE_OMP_SHEDULE) default(shared)
-            for (auto i = seg; i < seg+report_num; ++i) {
-                if (i >= total_points) continue;
-            //for (auto i = 0u; i < indices.size(); ++i) {
-                auto idx = indices.i2idx(indices_sf[i])+2;
-                //check_bounds(idx, shape, "Accesing result_arr");
-                if (
-                        std::apply(result_arr, idx) != 0 or
-                        std::apply(trace_flags_arr, idx) == 0 or
-                        std::apply(flags, idx) > 0 )
-                    continue;
-                auto seed = tpa::cast<T>(idx) * delta + start;
-                auto line = bidir_trace(seed, cfg, term_fn);
-                std::array<size_t, 2> skips{0, 0};
-                size_t line_len = line.size();
+                for (auto i = seg; i < seg+report_num; ++i) {
+                    if (i >= total_points) continue;
+                    auto idx = indices.i2idx(indices_sf[i])+2;
+                    //check_bounds(idx, shape, "Accesing result_arr");
+                    if (
+                            std::apply(result_arr, idx) != 0 or
+                            std::apply(trace_flags_arr, idx) == 0 or
+                            std::apply(flags, idx) > 0 )
+                        continue;
 
-                if (line_len < 4)
-                    continue;
+                    int tid = omp_get_thread_num();
+                    traced_num_thread[tid] += 1;
 
-                while (not in_bound(convert(line[skips[0]])) and skips[0] < line_len)
-                    skips[0] += 1;
-                while (not in_bound(convert(line[line_len-skips[1]-1])) and skips[1] < line_len)
-                    skips[1] += 1;
+                    auto seed = (tpa::cast<T>(idx) + T(0.5)) * delta + start;
+                    auto line = bidir_trace(seed, cfg, term_fn);
+                    std::array<size_t, 2> skips{0, 0};
+                    size_t line_len = line.size();
 
-                if (skips[0] >= line_len or skips[1] >= line_len or skips[0]+skips[1] >= line_len-1)
-                    continue;
-                bool closed = is_close(line[skips[0]]) and is_close(line[line_len-skips[1]-1]);
-                trace_grid.set_lines(
-                        closed ? 1 : -1,
-                        line, skips);
-            }
-            if (report_num < total_points)
-                printf("%ld / %ld, %ld points set\n", seg+report_num, total_points, trace_grid.get_total());
+                    if (line_len < 4)
+                        continue;
 
+                    while (not in_bound(convert(line[skips[0]])) and skips[0] < line_len)
+                        skips[0] += 1;
+                    while (not in_bound(convert(line[line_len-skips[1]-1])) and skips[1] < line_len)
+                        skips[1] += 1;
+
+                    if (skips[0] >= line_len or skips[1] >= line_len or skips[0]+skips[1] >= line_len-1)
+                        continue;
+                    bool closed = is_close(line[skips[0]]) and is_close(line[line_len-skips[1]-1]);
+                    trace_grid.set_lines(
+                            closed ? 1 : -1,
+                            line, skips);
+                }
+                if (report_num < total_points) {
+                    size_t traced_num = 0;
+                    for (auto tn : traced_num_thread) traced_num += tn;
+                    int print_len = int(std::log10(total_points)+1);
+                    printf("%*ld / %*ld, %*ld points set, %*ld lines traced.\n",
+                            print_len, std::min(seg+report_num, total_points),
+                            print_len, total_points,
+                            print_len, trace_grid.get_total(),
+                            print_len, traced_num);
+                }
             }
 
             return result;
@@ -404,10 +416,8 @@ class LineTracer {
 
     private:
         using data_t = NdArray<T, N>;
-        //using Interp = picinterp_cb::InterpolatorV<0, N, TRACE_LINE_INTERP_ORDER, T, int>;
         using Interp = picinterp::InterpolatorV<0, N, TRACE_LINE_INTERP_ORDER, T, int>;
         std::array<data_t, N> m_data;
-        //std::array<FArray<T, N, TRACE_LINE_INTERP_ORDER>, N> data;
         std::array<T, N> delta, start;
         std::array<size_t, N> m_shape;
         T scale;
@@ -489,13 +499,13 @@ PYBIND11_MODULE(line_tracer, m) {
                 const arg_t, const arg_t>(),
                 py::arg("vx"), py::arg("vy"), py::arg("vz"), py::arg("delta"), py::arg("start"))
         .def("trace", &LineTracer<float, 3>::trace_one_py<float, 0>, DEFAULTS)
-        //.def("trace", &LineTracer<float, 3>::trace_one_py<double, 0>, DEFAULTS)
+        .def("trace", &LineTracer<float, 3>::trace_one_py<double, 0>, DEFAULTS)
         .def("trace_many", &LineTracer<float, 3>::trace_many<float>, DEFAULTS)
-        //.def("trace_many", &LineTracer<float, 3>::trace_many<double>, DEFAULTS)
+        .def("trace_many", &LineTracer<float, 3>::trace_many<double>, DEFAULTS)
         .def("find_roots", &LineTracer<float, 3>::find_roots<float>, DEFAULTS)
-        //.def("find_roots", &LineTracer<float, 3>::find_roots<double>, DEFAULTS)
+        .def("find_roots", &LineTracer<float, 3>::find_roots<double>, DEFAULTS)
         .def("find_open_close", &LineTracer<float, 3>::find_open_close<float>, py::arg("inner_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u)
-        //.def("find_open_close", &LineTracer<float, 3>::find_open_close<double>, py::arg("inner_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u)
+        .def("find_open_close", &LineTracer<float, 3>::find_open_close<double>, py::arg("inner_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u)
         ;
 
 }

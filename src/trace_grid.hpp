@@ -85,16 +85,19 @@ class TraceGrid {
             iarr dir_sign = tpa::apply_unary_op(
                     [zero](auto a) { return a < -zero ? -1 : ( a > zero ? 1 : 0 ); }, dir);
             auto dir_is_zero = tpa::abs(dir_sign) <= zero;
-            while (tpa::dot(e - cur, dir) > -1) {
+            while (tpa::dot(e - cur, dir) > -zero) {
                 auto idx = to_idx1(cur);
                 if (idx >= 0 || idx < m_size)
                     ptr[idx] = val;
 
                 auto next_i = tpa::cast<int>(cur + dir_sign);
                 auto t = select(dir_is_zero, tpa::repeat_as(1e20, next_i), (next_i - cur) / dir);
+                /*
                 Float min_t = tpa::reduce(
                         [](auto a, auto b) { return std::min(Float(a), Float(b)); },
                         t);
+                        */
+                Float min_t = tpa::reduce_min(t) + Float(1e-6);  // to avoid trunc err
                 cur = cur + dir * min_t;
             }
         }
