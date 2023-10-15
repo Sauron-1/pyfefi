@@ -36,7 +36,11 @@ inline bool my_isnan(double val) {
 }
 
 template<typename T, size_t N>
-inline void check_bounds(const std::array<T, N>& idx, const std::array<size_t, N>& shape, const std::string& msg) {
+inline void check_bounds(
+        [[maybe_unused]] const std::array<T, N>& idx,
+        [[maybe_unused]] const std::array<size_t, N>& shape,
+        [[maybe_unused]] const std::string& msg) {
+#ifndef NDEBUG
     for (size_t i = 0; i < N; ++i) {
         if (idx[i] >= shape[i] || idx[i] < 0) [[unlikely]] {
             std::cerr << msg << std::endl <<
@@ -45,4 +49,5 @@ inline void check_bounds(const std::array<T, N>& idx, const std::array<size_t, N
             exit(1);
         }
     }
+#endif
 }

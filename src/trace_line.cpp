@@ -90,16 +90,7 @@ class LineTracer {
             std::array<T, N> ret;
             tpa::assign(coord, convert(coord));
             limit_bound(coord);
-            //check_bounds(coord, m_shape, "In eval, checking float");
-            /*
-            for (auto i = 0; i < N; ++i)
-                std::cout << coord[i] << " ";
-            std::cout << ", ";
-            for (auto i = 0; i < N; ++i)
-                std::cout << m_shape[i] << " ";
-            std::cout << std::endl;
-            std::cout << std::endl;
-            */
+            check_bounds(coord, m_shape, "In eval, checking float");
             Interp interp(coord);
             for (auto i = 0; i < N; ++i) {
                 ret[i] = interp.gather(m_data[i]);
@@ -154,7 +145,6 @@ class LineTracer {
                    len_pos = res_pos.size();
             size_t length = len_neg + len_pos - 1;
             res_pos.resize(length);
-            //printf("Traced line length: %ld, %ld, total %ld\n", len_neg, len_pos, length);
             // move the positive part to the end of the vector
             if (len_neg == 1)
                 return res_pos;
@@ -179,7 +169,6 @@ class LineTracer {
                 .term_val = T(term_val),
                 .max_iter = max_iter,
             };
-            //cfg.print();
             std::array<T, N> coords;
             for (auto i = 0; i < N; ++i)
                 coords[i] = init.at(i);
@@ -317,7 +306,7 @@ class LineTracer {
                 if (term_zero)
                     return true;
                 auto ipos = tpa::cast<int>(convert(pos));
-                //check_bounds(ipos, shape, "In term_fn");
+                check_bounds(ipos, shape, "In term_fn");
                 return std::apply(flags, ipos) > 0 || std::apply(trace_flags_arr, ipos) == 0;
             };
 
@@ -343,7 +332,7 @@ class LineTracer {
                 for (auto i = seg; i < seg+report_num; ++i) {
                     if (i >= total_points) continue;
                     auto idx = indices.i2idx(indices_sf[i])+2;
-                    //check_bounds(idx, shape, "Accesing result_arr");
+                    check_bounds(idx, shape, "Accesing result_arr");
                     if (
                             std::apply(result_arr, idx) != 0 or
                             std::apply(trace_flags_arr, idx) == 0 or
@@ -391,9 +380,6 @@ class LineTracer {
         bool terminate(std::array<T, N> coord, T term_val) const {
             std::array<T, N> coord_real;
             tpa::assign(coord_real, convert(coord));
-            //if (data[0].is_out(coord_real)) {
-            //    return true;
-            //}
             if (not in_bound(coord_real))
                 return true;
             auto val = eval(coord);
