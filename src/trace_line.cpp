@@ -209,11 +209,12 @@ class LineTracer {
                 for (auto j = 0; j < N; ++j)
                     coords[i][j] = inits.at(i, j);
 
-            std::vector<py::array> results(num_points);
+            std::vector<py::array_t<T>> results(num_points);
 #pragma omp parallel for schedule(TRACE_LINE_OMP_SHEDULE) default(shared)
             for (auto i = 0; i < num_points; ++i) {
                 auto result = bidir_trace(coords[i], cfg, [this, term_val](auto& pos) { return terminate(pos, term_val); });
-                results[i] = to_numpy(result);
+                //results[i] = to_numpy(result);
+                copy_to_numpy(result, results[i]);
             }
 
             py::list res;
@@ -442,6 +443,15 @@ class LineTracer {
                 for (auto j = 0; j < N; ++j)
                     ptr[i*N + j] = coords[i][j];
             return result;
+        }
+
+        void copy_to_numpy(const std::vector<std::array<T, N>>& coords, py::array_t<T>& out) const {
+            std::vector<size_t> shape{coords.size(), N};
+            out.resize(shape);
+            auto out_uc = out.template mutable_unchecked<2>();
+            for (auto i = 0; i < coords.size(); ++i)
+                for (auto j = 0; j < N; ++j)
+                    out_uc(i, j) = coords[i][j];
         }
 
 };
