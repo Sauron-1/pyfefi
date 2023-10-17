@@ -24,17 +24,18 @@ def interp(coords, pqw, var_list, order=2):
         be wrong.
 
     var_list : ndarray, or list of ndarray
-        Data to be interpolated. Can be one of the following
-        three forms:
-        1. list of ndarray, each array must have `ndim == len(pqw)`.
-        2. ndarray with `ndim == len(pqw)` and `shape == coords[0].shape`.
-        3. ndarray with `ndim > len(pqw)` and `shape[:len(pqw)] == coords[0].shape`.
+        Data to be interpolated. The first 3 dimensions
+        of the array must match `pqw`.
 
-    Returns:
+    Returns
+    -------
     results: ndarray, or list of ndarray
         The first `len(pqw)` dims have same shape as elements in
-        `coords`.
+        `coords`, other dimensions matches the last dimensions
+        of `var_list`.
     """
+    var_shape = tuple(len(c) for c in pqw)
+
     # check coords shape
     coords = list(coords)
     pqw = list(pqw)
@@ -44,23 +45,31 @@ def interp(coords, pqw, var_list, order=2):
     for c in coords[1:]:
         if c.shape != c_shape:
             raise ValueError('Shape of elements in `coords` must be the same')
-    if isinstance(var_list, np.ndarray):
-        if var_list.ndim > len(pqw):
-            shape = var_list.shape
-            var_list = var_list.reshape(var_list.shape[:len(pqw)] + (-1,))
-            var_list = [var_list[..., i] for i in var_list.shape[len(pqw)]]
-            kind = 'vec_arr'
-        else:
-            var_list = [var_list]
-            kind = 'arr'
-    else:
-        kind = 'arr_list'
 
-    var_shape = tuple(len(c) for c in pqw)
-    if var_list[0].ndim != len(pqw):
-        raise ValueError('Dimension mismatch for interp data and coordinates')
-    if var_list[0].shape != var_shape:
-        warnings.warn('Shape mismatch for interp data and coordinates.')
+    def convert(var):
+        shape = var.shape
+        if var.shape[:len(pqw)] != var_shape:
+            raise ValueError('Shape mismatch for interp data and coordinates')
+        var = var.reshape(var.shape[:len(pqw)] + (-1,))
+        var_list = [var[..., i] for i in range(var.shape[len(pqw)])]
+        return var_list, shape
+
+    if isinstance(var_list, np.ndarray):
+        return_one = True
+        var_list, shape = convert(var_list)
+        shapes = [shape]
+        index_ranges = [(0, len(var_list))]
+    else:
+        return_one = False
+        _vl = []
+        shapes = []
+        index_ranges = []
+        for var in var_list:
+            vl, shape = convert(var)
+            shapes.append(shape)
+            index_ranges.append((len(_vl), len(_vl)+len(vl)))
+            _vl.extend(vl)
+        var_list = _vl
 
     bases = []
     scales = []
@@ -70,10 +79,14 @@ def interp(coords, pqw, var_list, order=2):
 
     results = picinterp.gather(var_list, coords, bases, scales, order=order)
 
-    if kind == 'arr_list':
-        return results
-    if kind == 'arr':
-        return results[0]
-    if kind == 'vec_arr':
-        result = np.stack(results, axis=-1)
-        return result.reshape(shape)
+    ret = []
+    for shape, index_range in zip(shapes, index_ranges):
+        ret.append(
+            np.stack(
+                results[index_range[0]:index_range[1]], axis=-1
+            ).reshape(tuple(c_shape) + shape[len(pqw):])
+        )
+    if return_one:
+        return ret[0]
+    else:
+        return ret

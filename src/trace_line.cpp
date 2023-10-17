@@ -385,7 +385,7 @@ class LineTracer {
                 return true;
             auto val = eval(coord);
             T norm = std::sqrt(tpa::dot(val, val));
-            return norm < term_val;
+            return norm <= term_val;
         }
 
         T dist(std::array<T, N> init, std::array<T, N> p1, std::array<T, N> p2) const {
