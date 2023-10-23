@@ -84,7 +84,7 @@ function(add_submodule module)
     target_link_libraries(${target_name} PRIVATE tuple_arithmetic)
     target_link_libraries(${target_name} PRIVATE picinterp)
 
-    if (${CMAKE_CXX_COMPILER_ID} STREQUAL "MSVC")
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         target_compile_options(${target_name} PRIVATE /O2 /fp:fast /DNDEBUG)
     else()
         target_compile_options(${target_name} PRIVATE -O3 -ffast-math -DNDEBUG -march=${MARCH})

@@ -269,16 +269,17 @@ class LineTracer {
 
         template<typename Real>
         py::array find_open_close(
-                py::array_t<uint8_t, py::array::forcecast> inner_flags,
+                py::array_t<uint8_t, py::array::forcecast> ends_flags,
                 py::array_t<uint8_t, py::array::forcecast> trace_flags,
                 Real step_size, Real tol, Real tol_rel, Real max_step, Real min_step, int max_iter, T min_dist, Real term_val,
                 size_t report_num) const {
-            if (inner_flags.ndim() != N)
-                throw std::invalid_argument("inner_flags must have dimension " + std::to_string(N));
+            constexpr uint16_t initial_flag = ~uint16_t(0);
+            if (ends_flags.ndim() != N)
+                throw std::invalid_argument("ends_flags must have dimension " + std::to_string(N));
             const std::array<size_t, N> shape = m_shape;
             for (auto i = 0u; i < N; ++i)
-                if (inner_flags.shape(i) != shape[i])
-                    throw std::invalid_argument("size of dimension " + std::to_string(i) + " of inner_flag does not match.");
+                if (ends_flags.shape(i) != shape[i])
+                    throw std::invalid_argument("size of dimension " + std::to_string(i) + " of ends_flags does not match.");
             TraceConfig<T> cfg {
                 .step_size = T(step_size),
                 .tol = T(tol),
@@ -291,16 +292,16 @@ class LineTracer {
             };
 
             auto trace_flags_arr = trace_flags.unchecked<N>();
-            auto flags = inner_flags.unchecked<N>();
-            py::array_t<int8_t> result(shape);
+            auto flags = ends_flags.unchecked<N>();
+            py::array_t<uint16_t> result(shape);
             auto result_arr = result.unchecked<N>();
-            TraceGrid<int8_t, T, N> trace_grid(
+            TraceGrid<uint16_t, T, N> trace_grid(
                     result.mutable_data(),
                     start, delta, shape);
 
             auto result_ptr = result.mutable_data();
             for (auto i = 0; i < result.size(); ++i)
-                result_ptr[i] = 0;
+                result_ptr[i] = initial_flag;
 
             auto term_fn = [this, &flags, term_val, &shape, &trace_flags_arr](auto& pos) {
                 bool term_zero = terminate(pos, term_val);
@@ -311,9 +312,9 @@ class LineTracer {
                 return std::apply(flags, ipos) > 0 || std::apply(trace_flags_arr, ipos) == 0;
             };
 
-            auto is_close = [this, &flags](auto& pos) {
+            auto get_flag = [this, &flags](auto& pos) -> uint16_t {
                 auto ipos = tpa::cast<int>(convert(pos));
-                return std::apply(flags, ipos) > 0;
+                return std::apply(flags, ipos);
             };
 
             NdIndices<N> indices(shape-4);
@@ -335,9 +336,9 @@ class LineTracer {
                     auto idx = indices.i2idx(indices_sf[i])+2;
                     check_bounds(idx, shape, "Accesing result_arr");
                     if (
-                            std::apply(result_arr, idx) != 0 or
+                            std::apply(result_arr, idx) != initial_flag or
                             std::apply(trace_flags_arr, idx) == 0 or
-                            std::apply(flags, idx) > 0 )
+                            std::apply(flags, idx) != 0 )
                         continue;
 
                     int tid = omp_get_thread_num();
@@ -358,9 +359,9 @@ class LineTracer {
 
                     if (skips[0] >= line_len or skips[1] >= line_len or skips[0]+skips[1] >= line_len-1)
                         continue;
-                    bool closed = is_close(line[skips[0]]) and is_close(line[line_len-skips[1]-1]);
+                    uint16_t result_flag = (get_flag(line[skips[0]]) << 8) | get_flag(line[line_len-skips[1]-1]);
                     trace_grid.set_lines(
-                            closed ? 1 : -1,
+                            result_flag,
                             line, skips);
                 }
                 if (report_num < total_points) {
@@ -485,8 +486,8 @@ PYBIND11_MODULE(line_tracer, m) {
         .def("trace_many", &LineTracer<float, 2>::trace_many<double>, DEFAULTS)
         .def("find_roots", &LineTracer<float, 2>::find_roots<float>, DEFAULTS)
         .def("find_roots", &LineTracer<float, 2>::find_roots<double>, DEFAULTS)
-        .def("find_open_close", &LineTracer<float, 2>::find_open_close<float>, py::arg("inner_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u)
-        .def("find_open_close", &LineTracer<float, 2>::find_open_close<double>, py::arg("inner_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u);
+        .def("find_open_close", &LineTracer<float, 2>::find_open_close<float>, py::arg("ends_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u)
+        .def("find_open_close", &LineTracer<float, 2>::find_open_close<double>, py::arg("ends_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u);
 
     py::class_<LineTracer<float, 3>>(m, "LineTracer3")
         .def(py::init<const arg_t, const arg_t, const arg_t>(),
@@ -500,8 +501,8 @@ PYBIND11_MODULE(line_tracer, m) {
         .def("trace_many", &LineTracer<float, 3>::trace_many<double>, DEFAULTS)
         .def("find_roots", &LineTracer<float, 3>::find_roots<float>, DEFAULTS)
         .def("find_roots", &LineTracer<float, 3>::find_roots<double>, DEFAULTS)
-        .def("find_open_close", &LineTracer<float, 3>::find_open_close<float>, py::arg("inner_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u)
-        .def("find_open_close", &LineTracer<float, 3>::find_open_close<double>, py::arg("inner_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u)
+        .def("find_open_close", &LineTracer<float, 3>::find_open_close<float>, py::arg("ends_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u)
+        .def("find_open_close", &LineTracer<float, 3>::find_open_close<double>, py::arg("ends_flags"), py::arg("trace_flags"), CFG_DEFAULTS, py::arg("report_num")=0u)
         ;
 
 }

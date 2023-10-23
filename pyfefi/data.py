@@ -420,6 +420,11 @@ class Mesh:
             self.__delkey(name)
             num_free += free_num
 
+    def clear(self):
+        name_to_del = self.array_names.copy()
+        for name in name_to_del:
+            self.__delkey(name)
+
     def load(self, fn, var_names, suffix='', protected=False):
         """
         Load a variable from a netCDF file and store it in the mesh.
