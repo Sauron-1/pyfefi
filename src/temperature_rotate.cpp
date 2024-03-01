@@ -215,17 +215,17 @@ static inline void _rotate(
 
 template<typename T0, typename...T>
 void assert_same_shape_strides(const py::array_t<T0>& arr0, const py::array_t<T>&...arrs) {
-    bool same_dim = (arr0.ndim() == ... == arrs.ndim());
+    bool same_dim = (... and (arr0.ndim() == arrs.ndim()));
     if (not same_dim)
         throw std::runtime_error("Array dimensions must be equal");
     for (int i = 0; i < arr0.ndim(); ++i) {
-        bool same_shape = (arr0.shape(i) == ... == arrs.shape(i));
+        bool same_shape = (... and (arr0.shape(i) == arrs.shape(i)));
         if (not same_shape)
             throw std::runtime_error("Array shapes must be the same");
     }
     for (int i = 0; i < arr0.ndim(); ++i) {
-        bool same_shape = (arr0.strides(i) == ... == arrs.strides(i));
-        if (not same_shape)
+        bool same_strides = (... and (arr0.strides(i) == arrs.strides(i)));
+        if (not same_strides)
             throw std::runtime_error("Array strides must be the same");
     }
 }
