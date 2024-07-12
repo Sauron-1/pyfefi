@@ -31,7 +31,7 @@ if (NOT tuple_arithmetic_FOUND)
     FetchContent_Declare(
         tuple_arithmetic
         GIT_REPOSITORY https://github.com/Sauron-1/tuple_arithmetic.git
-        GIT_TAG        master
+        GIT_TAG        05be75e86ae7dc396217faa05d29f9af4c172a6f
         )
     set(BULID_TESTS_TMP ${BUILD_TESTS})
     set(BUILD_TESTS OFF)
@@ -48,7 +48,7 @@ if (NOT picinterp_FOUND)
     FetchContent_Declare(
         picinterp
         GIT_REPOSITORY https://github.com/Sauron-1/picinterp.git
-        GIT_TAG        master
+        GIT_TAG        63d2955a2305229146997d7b5320fed93cf0d932
         )
     set(BULID_TESTS_TMP ${BUILD_TESTS})
     set(BUILD_TESTS OFF)

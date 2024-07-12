@@ -2,7 +2,6 @@ import os
 import re
 import sys
 import sysconfig
-import platform
 import subprocess
 from pathlib import Path
 
@@ -45,8 +44,11 @@ class CMakeBuild(build_ext):
         build_args = ['--config', cfg]
 
         # Assuming Makefiles
-        num_job = max(os.cpu_count()-1, 1)
-        build_args += ['--', f'-j{num_job}']
+        if sys.platform == 'win32':
+            pass
+        else:
+            num_job = max(os.cpu_count()-1, 1)
+            build_args += ['--', f'-j{num_job}']
 
         self.build_args = build_args
 
@@ -87,8 +89,11 @@ class CMakeBuild(build_ext):
         for path in so_dir.rglob('*'):
             if path.is_file():
                 dest_path = build_lib / path.relative_to(build_temp)
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
-                self.copy_file(path, dest_path.parent)
+                dest_dir = dest_path.parent
+                if dest_dir.name == 'Release':
+                    dest_dir = dest_dir.parent
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                self.copy_file(path, dest_dir)
         
 ext_modules = [
     CMakeExtension('pyfefi'),

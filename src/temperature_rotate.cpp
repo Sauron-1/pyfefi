@@ -173,7 +173,7 @@ static inline void _rotate(
     const uint64_t packed_size = num_packs * pack_size;
     using vec = xsimd::make_sized_batch_t<Real, pack_size>;
 #pragma omp parallel for schedule(static)
-    for (uint64_t i = 0; i < num_packs; ++i) {
+    for (int64_t i = 0; i < num_packs; ++i) {
         rotate_kernel_v<pack_size>(
                 &Txx[i*pack_size],
                 &Tyy[i*pack_size],

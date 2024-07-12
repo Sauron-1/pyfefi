@@ -331,7 +331,7 @@ class LineTracer {
 
             for (auto seg = 0u; seg < total_points; seg += report_num) {
 #pragma omp parallel for schedule(TRACE_LINE_OMP_SHEDULE) default(shared)
-                for (auto i = seg; i < seg+report_num; ++i) {
+                for (int i = seg; i < seg+report_num; ++i) {
                     if (i >= total_points) continue;
                     auto idx = indices.i2idx(indices_sf[i])+2;
                     check_bounds(idx, shape, "Accesing result_arr");
