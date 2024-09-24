@@ -17,62 +17,30 @@ static inline void rotate_kernel(
         const Real Tyy,
         const Real Tzz,
         const Real Txy,
-        const Real Txz,
         const Real Tyz,
+        const Real Tzx,
         const Real Bx,
         const Real By,
         const Real Bz,
-        Real& __restrict outxx,
-        Real& __restrict outyy,
-        Real& __restrict outzz,
-        Real& __restrict outxy,
-        Real& __restrict outxz,
-        Real& __restrict outyz) {
-    const Real B2_yz = By*By + Bz*Bz;
-    const Real B_norm_inv = 1 / sqrt(Bx*Bx + B2_yz);
-    const Real cos_theta = Bx * B_norm_inv,
-               sin_theta = max(sqrt(B2_yz) * B_norm_inv, Real(1e-5));
-    /*
-    if (sin_theta < 1e-5) {
-        outxx = Txx;
-        outyy = Tyy;
-        outzz = Tzz;
-        outxy = Txy;
-        outxz = Txz;
-        outyz = Tyz;
-    }
-    */
-    constexpr Real ux = 0;
-    const Real uy = Bz / sin_theta * B_norm_inv,
-               uz = -By / sin_theta * B_norm_inv;
-
-    array<Real, 9> R{
-        cos_theta + ux*ux*(1-cos_theta),
-        ux*uy*(1-cos_theta) - uz*sin_theta,
-        ux*uz*(1-cos_theta) + uy*sin_theta,
-
-        uy*ux*(1-cos_theta) + uz*sin_theta,
-        cos_theta + uy*uy*(1-cos_theta),
-        uy*uz*(1-cos_theta) - ux*sin_theta,
-
-        uz*ux*(1-cos_theta) - uy*sin_theta,
-        uz*uy*(1-cos_theta) + ux*sin_theta,
-        cos_theta + uz*uz*(1-cos_theta)
-    };
-
-    const Real x0 = R[0]*Txx + R[1]*Txy + R[2]*Txz;
-    const Real x1 = R[0]*Txy + R[1]*Tyy + R[2]*Tyz;
-    const Real x2 = R[0]*Txz + R[1]*Tyz + R[2]*Tzz;
-    const Real x3 = R[3]*Txx + R[4]*Txy + R[5]*Txz;
-    const Real x4 = R[3]*Txy + R[4]*Tyy + R[5]*Tyz;
-    const Real x5 = R[3]*Txz + R[4]*Tyz + R[5]*Tzz;
-
-    outxx = R[0]*x0 + R[1]*x1 + R[2]*x2;
-    outyy = R[3]*x3 + R[4]*x4 + R[5]*x5;
-    outzz = R[6]*(R[6]*Txx + R[7]*Txy + R[8]*Txz) + R[7]*(R[6]*Txy + R[7]*Tyy + R[8]*Tyz) + R[8]*(R[6]*Txz + R[7]*Tyz + R[8]*Tzz);
-    outxy = R[3]*x0 + R[4]*x1 + R[5]*x2;
-    outxz = R[6]*x0 + R[7]*x1 + R[8]*x2;
-    outyz = R[6]*x3 + R[7]*x4 + R[8]*x5;
+        Real& __restrict Tpara,
+        Real& __restrict Tperp) {
+    Real x0 = By*By;
+    Real x1 = Bz*Bz;
+    Real x2 = x0 + x1;
+    Real x3 = Real(1)/std::sqrt(Bx*Bx + x2);
+    Real x4 = Bx*x3;
+    Real x5 = By*x3;
+    Real x6 = Txy*x5;
+    Real x7 = Bz*x3;
+    Real x8 = Tzx*x7;
+    Real x9 = (1 - x4)/x2;
+    Real x10 = By*Bz*x9;
+    Real x11 = x1*x9 + x4;
+    Real x12 = x0*x9 + x4;
+    Real x13 = x10/2;
+    Real x14 = Tyz*x10;
+    Tpara = x4*(Txx*x4 + x6 + x8) + x5*(Txy*x4 + Tyy*x5 + Tyz*x7) + x7*(Tyz*x5 + Tzx*x4 + Tzz*x7);
+    Tperp = x11*(Tyy*x11 - x14 - x6)/2 + x12*(Tzz*x12 - x14 - x8)/2 - x13*(-Txy*x7 - Tyy*x10 + Tyz*x12) - x13*(Tyz*x11 - Tzx*x5 - Tzz*x10) - x5*(-Txx*x5 + Txy*x11 - Tzx*x10)/2 - x7*(-Txx*x7 - Txy*x10 + Tzx*x12)/2;
 }
 
 template<size_t N, typename Real>
@@ -81,17 +49,13 @@ static inline void rotate_kernel_v(
         const Real* __restrict _Tyy,
         const Real* __restrict _Tzz,
         const Real* __restrict _Txy,
-        const Real* __restrict _Txz,
         const Real* __restrict _Tyz,
+        const Real* __restrict _Tzx,
         const Real* __restrict _Bx,
         const Real* __restrict _By,
         const Real* __restrict _Bz,
-        Real* __restrict outxx,
-        Real* __restrict outyy,
-        Real* __restrict outzz,
-        Real* __restrict outxy,
-        Real* __restrict outxz,
-        Real* __restrict outyz) {
+        Real* __restrict _Tpara,
+        Real* __restrict _Tperp) {
     using vec = xsimd::make_sized_batch_t<Real, N>;
     static_assert(not std::is_void_v<vec>);
 
@@ -99,55 +63,32 @@ static inline void rotate_kernel_v(
     auto Tyy = vec::load_unaligned(_Tyy);
     auto Tzz = vec::load_unaligned(_Tzz);
     auto Txy = vec::load_unaligned(_Txy);
-    auto Txz = vec::load_unaligned(_Txz);
     auto Tyz = vec::load_unaligned(_Tyz);
+    auto Tzx = vec::load_unaligned(_Tzx);
     auto Bx = vec::load_unaligned(_Bx);
     auto By = vec::load_unaligned(_By);
     auto Bz = vec::load_unaligned(_Bz);
 
-    const vec B2_yz = By*By + Bz*Bz;
-    const vec B_norm_inv = Real(1.0) / sqrt(Bx*Bx + B2_yz);
-    const vec cos_theta = Bx * B_norm_inv,
-               sin_theta = max(sqrt(B2_yz) * B_norm_inv, vec(1e-5));
+    auto x0 = By*By;
+    auto x1 = Bz*Bz;
+    auto x2 = x0 + x1;
+    auto x3 = Real(1)/sqrt(Bx*Bx + x2);
+    auto x4 = Bx*x3;
+    auto x5 = By*x3;
+    auto x6 = Txy*x5;
+    auto x7 = Bz*x3;
+    auto x8 = Tzx*x7;
+    auto x9 = (1 - x4)/x2;
+    auto x10 = By*Bz*x9;
+    auto x11 = x1*x9 + x4;
+    auto x12 = x0*x9 + x4;
+    auto x13 = x10/2;
+    auto x14 = Tyz*x10;
+    auto Tpara = x4*(Txx*x4 + x6 + x8) + x5*(Txy*x4 + Tyy*x5 + Tyz*x7) + x7*(Tyz*x5 + Tzx*x4 + Tzz*x7);
+    auto Tperp = x11*(Tyy*x11 - x14 - x6)/2 + x12*(Tzz*x12 - x14 - x8)/2 - x13*(-Txy*x7 - Tyy*x10 + Tyz*x12) - x13*(Tyz*x11 - Tzx*x5 - Tzz*x10) - x5*(-Txx*x5 + Txy*x11 - Tzx*x10)/2 - x7*(-Txx*x7 - Txy*x10 + Tzx*x12)/2;
 
-    constexpr Real ux = 0;
-    const vec uy = Bz / sin_theta * B_norm_inv,
-               uz = -By / sin_theta * B_norm_inv;
-
-    array<vec, 9> R{
-        cos_theta + ux*ux*(1-cos_theta),
-        ux*uy*(1-cos_theta) - uz*sin_theta,
-        ux*uz*(1-cos_theta) + uy*sin_theta,
-
-        uy*ux*(1-cos_theta) + uz*sin_theta,
-        cos_theta + uy*uy*(1-cos_theta),
-        uy*uz*(1-cos_theta) - ux*sin_theta,
-
-        uz*ux*(1-cos_theta) - uy*sin_theta,
-        uz*uy*(1-cos_theta) + ux*sin_theta,
-        cos_theta + uz*uz*(1-cos_theta)
-    };
-
-    const vec x0 = R[0]*Txx + R[1]*Txy + R[2]*Txz;
-    const vec x1 = R[0]*Txy + R[1]*Tyy + R[2]*Tyz;
-    const vec x2 = R[0]*Txz + R[1]*Tyz + R[2]*Tzz;
-    const vec x3 = R[3]*Txx + R[4]*Txy + R[5]*Txz;
-    const vec x4 = R[3]*Txy + R[4]*Tyy + R[5]*Tyz;
-    const vec x5 = R[3]*Txz + R[4]*Tyz + R[5]*Tzz;
-
-    const vec out1 = R[0]*x0 + R[1]*x1 + R[2]*x2;
-    const vec out2 = R[3]*x3 + R[4]*x4 + R[5]*x5;
-    const vec out3 = R[6]*(R[6]*Txx + R[7]*Txy + R[8]*Txz) + R[7]*(R[6]*Txy + R[7]*Tyy + R[8]*Tyz) + R[8]*(R[6]*Txz + R[7]*Tyz + R[8]*Tzz);
-    const vec out4 = R[3]*x0 + R[4]*x1 + R[5]*x2;
-    const vec out5 = R[6]*x0 + R[7]*x1 + R[8]*x2;
-    const vec out6 = R[6]*x3 + R[7]*x4 + R[8]*x5;
-
-    out1.store_unaligned(outxx);
-    out2.store_unaligned(outyy);
-    out3.store_unaligned(outzz);
-    out4.store_unaligned(outxy);
-    out5.store_unaligned(outxz);
-    out6.store_unaligned(outyz);
+    Tpara.store_unaligned(_Tpara);
+    Tperp.store_unaligned(_Tperp);
 }
 
 template<size_t pack_size, typename Real>
@@ -156,17 +97,13 @@ static inline void _rotate(
         const Real* __restrict Tyy,
         const Real* __restrict Tzz,
         const Real* __restrict Txy,
-        const Real* __restrict Txz,
         const Real* __restrict Tyz,
+        const Real* __restrict Tzx,
         const Real* __restrict vx,
         const Real* __restrict vy,
         const Real* __restrict vz,
-        Real* __restrict outxx,
-        Real* __restrict outyy,
-        Real* __restrict outzz,
-        Real* __restrict outxy,
-        Real* __restrict outxz,
-        Real* __restrict outyz,
+        Real* __restrict Tpara,
+        Real* __restrict Tperp,
         uint64_t size) {
     const uint64_t num_packs = size / pack_size,
                    remains = size % pack_size;
@@ -179,17 +116,13 @@ static inline void _rotate(
                 &Tyy[i*pack_size],
                 &Tzz[i*pack_size],
                 &Txy[i*pack_size],
-                &Txz[i*pack_size],
                 &Tyz[i*pack_size],
+                &Tzx[i*pack_size],
                 &vx[i*pack_size],
                 &vy[i*pack_size],
                 &vz[i*pack_size],
-                &outxx[i*pack_size],
-                &outyy[i*pack_size],
-                &outzz[i*pack_size],
-                &outxy[i*pack_size],
-                &outxz[i*pack_size],
-                &outyz[i*pack_size]
+                &Tpara[i*pack_size],
+                &Tperp[i*pack_size]
             );
     }
     for (uint64_t i = 0; i < remains; ++i) {
@@ -198,17 +131,13 @@ static inline void _rotate(
                 Tyy[i+packed_size],
                 Tzz[i+packed_size],
                 Txy[i+packed_size],
-                Txz[i+packed_size],
                 Tyz[i+packed_size],
+                Tzx[i+packed_size],
                 vx[i+packed_size],
                 vy[i+packed_size],
                 vz[i+packed_size],
-                outxx[i+packed_size],
-                outyy[i+packed_size],
-                outzz[i+packed_size],
-                outxy[i+packed_size],
-                outxz[i+packed_size],
-                outyz[i+packed_size]
+                Tpara[i+packed_size],
+                Tperp[i+packed_size]
             );
     }
 }
@@ -236,20 +165,20 @@ std::vector<py::array_t<Real>> rotate_temp(
         const py::array_t<Real>& Tyy,
         const py::array_t<Real>& Tzz,
         const py::array_t<Real>& Txy,
-        const py::array_t<Real>& Txz,
         const py::array_t<Real>& Tyz,
+        const py::array_t<Real>& Tzx,
         const py::array_t<Real>& vx,
         const py::array_t<Real>& vy,
         const py::array_t<Real>& vz) {
     constexpr size_t simd_size = xsimd::simd_type<Real>::size;
     std::vector<py::array_t<Real>> result;
-    assert_same_shape_strides(Txx, Tyy, Tzz, Txy, Txz, Tyz, vx, vy, vz);
+    assert_same_shape_strides(Txx, Tyy, Tzz, Txy, Tzx, Tyz, vx, vy, vz);
     std::vector<size_t> shape, strides;
     for (auto i = 0; i < Txx.ndim(); ++i) {
         shape.push_back(Txx.shape(i));
         strides.push_back(Txx.strides(i));
     }
-    for (auto i = 0; i < 6; ++i)
+    for (auto i = 0; i < 2; ++i)
         result.emplace_back(shape, strides);
     size_t size = Txx.size();
     _rotate<simd_size>(
@@ -257,17 +186,13 @@ std::vector<py::array_t<Real>> rotate_temp(
             Tyy.data(),
             Tzz.data(),
             Txy.data(),
-            Txz.data(),
             Tyz.data(),
+            Tzx.data(),
             vx.data(),
             vy.data(),
             vz.data(),
             result[0].mutable_data(),
             result[1].mutable_data(),
-            result[2].mutable_data(),
-            result[3].mutable_data(),
-            result[4].mutable_data(),
-            result[5].mutable_data(),
             size);
     return result;
 }
@@ -276,10 +201,10 @@ PYBIND11_MODULE(temperature_rotate, m) {
     m.doc() = "Rotate temperature matrix along a vector";
     m.def("rotate", &rotate_temp<float>,
             py::arg("Txx"), py::arg("Tyy"), py::arg("Tzz"),
-            py::arg("Txy"), py::arg("Txz"), py::arg("Tyz"),
+            py::arg("Txy"), py::arg("Tyz"), py::arg("Tzx"),
             py::arg("vx"), py::arg("vy"), py::arg("vz"));
     m.def("rotate", &rotate_temp<double>,
             py::arg("Txx"), py::arg("Tyy"), py::arg("Tzz"),
-            py::arg("Txy"), py::arg("Txz"), py::arg("Tyz"),
+            py::arg("Txy"), py::arg("Tyz"), py::arg("Tzx"),
             py::arg("vx"), py::arg("vy"), py::arg("vz"));
 }
