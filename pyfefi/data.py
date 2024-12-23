@@ -71,6 +71,66 @@ class _Slice:
 Slice = _Slice()
 
 
+class Units:
+
+    def __init__(self, path, scaled=True):
+        if os.path.isfile(path):
+            conf_fn = path
+            self.path = os.path.dirname(path)
+        else:
+            conf_fn = os.path.join(path, 'fefi.input')
+            self.path = path
+        nml = f90nml.read(self.path)
+
+        simtype = nml['input_parameters']['simtype'][0]
+
+        if simtype[0] not in [6, 7] or (simtype[1] < 90 or simtype[1] >= 100):
+            raise Exception('simtype %d, %d not supported' % (simtype[0], simtype[1]))
+
+        sw_info = nml['input_parameters']['bnvt_sw']
+        eq_info = nml['input_parameters']['bnvt_eq']
+        B0 = np.linalg.norm(sw_info[:3]) * 1e-9
+        Vsw = sw_info[3:6]
+        N0 = sw_info[6]*1e6
+        Re = 6371e3
+
+        omega_i = B0 * (C.e / C.m_p)
+        Va = B0 / np.sqrt(C.mu_0*N0*C.m_p)
+        di = Va / omega_i
+
+        R_lambda = nml['input_parameters']['roverL']
+
+        self.scale_factor = Re / (di / R_lambda)
+
+        self.m = C.m_p
+        self.B = B0
+        if scaled:
+            # Keep resulting speed the same
+            self.L = Re
+            self.t = self.scale_factor / omega_i
+        else:
+            self.L = di * R_lambda
+            self.t = 1 / omega_i
+
+        self.v = self.L / self.t
+
+        self.E = self.v * self.B  # E ~ v \times B
+        self.J = self.B / self.L / C.mu_0  # J ~ 1/mu_0 * \nabla B
+        self.q = self.m / (self.t * self.B)  # m dv/dt ~ q v \times B
+        self.N = N0
+
+        self.T = self.m * self.v**2
+
+        self.Re = Re
+
+        self.Neq = eq_info[3]
+
+        self.Vsw = Vsw[0] * 1e3
+        self.Nsw = N0
+        self.Ma = -Vsw[0] / Va * 1e3
+        self.Bsw = np.array(sw_info[:3])*1e-9
+
+
 class Config:
 
     def __init__(self, path, idx=None, dont_save=False, use_saved=True, version=2):
@@ -145,6 +205,9 @@ class Config:
         all_field_data_fns = [fn for fn in os.listdir(self.path) if fn.startswith(self.fn_prefix) and fn.endswith('.nc')]
         self.nframes = len(all_field_data_fns)
         self.dont_save = dont_save
+
+    def get_units(self, scaled=True):
+        return Units(self.path, scaled)
 
     def _name(self, base):
         if self.idx > 0:
