@@ -6,3 +6,4 @@ pandas
 pybind11
 setuptools
 f90nml
+scipy

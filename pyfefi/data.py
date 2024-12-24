@@ -9,6 +9,7 @@ try:
     HAS_PYVISTA = True
 except ImportError:
     HAS_PYVISTA = False
+from scipy import constants as C
 
 from .coords import get_coord_from_id
 
@@ -46,7 +47,26 @@ class _Slice:
         The difference is, the returned object will always keep dimension
         of the original ndarray.
         """
-        return tuple(self.convert_slice(s) for s in args)
+        #return tuple(self.convert_slice(s) for s in args)
+        return args
+
+    def squeezer(cls, slc):
+        result = []
+        for s in slc:
+            if np.isscalar(s):
+                result.append(0)
+            else:
+                result.append(slice(None))
+        return tuple(result)
+
+    def extender(cls, slc):
+        result = []
+        for s in slc:
+            if np.isscalar(s):
+                result.append(None)
+            else:
+                result.append(slice(None))
+        return tuple(result)
 
     def get_shape(self, path):
         """
@@ -68,6 +88,28 @@ class _Slice:
         names = f90nml.read(conf_fn)
         return np.array(names['changeparameters']['ddomain']).reshape(3, 2)
 
+class SlcTranspose:
+
+    def __init__(self, slc):
+        self.slc = slc
+
+    def transpose(self, arr, *args):
+        slc = self.slc
+        if slc == Ellipsis:
+            slc = (slice(None),) * len(args)
+        if not isinstance(slc, tuple):
+            slc = (slc,)
+        slc = (slice(None),) * (len(args) - len(slc)) + slc
+
+        fwd_slc = Slice.extender(slc)
+        bwd_slc = Slice.squeezer(slc)
+        bwd_slc = tuple(bwd_slc[i] for i in args)
+
+        return arr[fwd_slc].transpose(*args)[bwd_slc]
+
+    def __call__(self, arr, *args):
+        return self.transpose(arr, *args)
+
 Slice = _Slice()
 
 
@@ -76,13 +118,11 @@ class Units:
     def __init__(self, path, scaled=True):
         if os.path.isfile(path):
             conf_fn = path
-            self.path = os.path.dirname(path)
         else:
             conf_fn = os.path.join(path, 'fefi.input')
-            self.path = path
-        nml = f90nml.read(self.path)
+        nml = f90nml.read(conf_fn)
 
-        simtype = nml['input_parameters']['simtype'][0]
+        simtype = nml['input_parameters']['simtype']
 
         if simtype[0] not in [6, 7] or (simtype[1] < 90 or simtype[1] >= 100):
             raise Exception('simtype %d, %d not supported' % (simtype[0], simtype[1]))
@@ -113,6 +153,7 @@ class Units:
             self.t = 1 / omega_i
 
         self.v = self.L / self.t
+        self.V = self.v
 
         self.E = self.v * self.B  # E ~ v \times B
         self.J = self.B / self.L / C.mu_0  # J ~ 1/mu_0 * \nabla B
@@ -129,6 +170,7 @@ class Units:
         self.Nsw = N0
         self.Ma = -Vsw[0] / Va * 1e3
         self.Bsw = np.array(sw_info[:3])*1e-9
+        self.Va = Va
 
 
 class Config:
@@ -205,6 +247,25 @@ class Config:
         all_field_data_fns = [fn for fn in os.listdir(self.path) if fn.startswith(self.fn_prefix) and fn.endswith('.nc')]
         self.nframes = len(all_field_data_fns)
         self.dont_save = dont_save
+
+    def slice_size(self, slices):
+        if slices == Ellipsis:
+            slices = (slice(None),) * 3
+
+        result = []
+        for slc, n in zip(slices, self.grid_size):
+            if np.isscalar(slc):
+                result.append(1)
+            else:
+                s, e, st = slc.start, slc.stop, slc.step
+                if s is None:
+                    s = 0
+                if e is None:
+                    e = n
+                if st is None:
+                    st = 1
+                result.append((e - s) // st)
+        return result
 
     def get_units(self, scaled=True):
         return Units(self.path, scaled)
@@ -284,11 +345,18 @@ class Config:
         ps = np.linspace(*plim, self.grid_size[0], dtype=np.dtype(data_type))
         qs = np.linspace(*qlim, self.grid_size[1], dtype=np.dtype(data_type))
         ws = np.linspace(*wlim, self.grid_size[2], dtype=np.dtype(data_type))
+
         if self.coord.coords_independent:
             ps = ps[slices[0]]
             qs = qs[slices[1]]
             ws = ws[slices[2]]
         P, Q, W = np.meshgrid(ps, qs, ws, indexing='ij')
+
+        sq = Slice.squeezer(slices)
+        P = P[sq]
+        Q = Q[sq]
+        W = W[sq]
+
         X, Y, Z = self.coord.to_cartesian(P, Q, W)
         if not self.coord.coords_independent:
             X = X[slices]
@@ -342,6 +410,83 @@ class Config:
                 self._save_xyz(data_type, None)
 
         return x, y, z
+
+    def minimum_slice(self, xs, ys=None, zs=None, extra=None):
+        if zs is None:
+            xs, ys, zs = xs
+            if ys is not None and extra is None:
+                extra = ys
+        if extra is None:
+            extra = 0
+
+        pqw = self.coord.from_cartesian(xs, ys, zs)
+        lims = ((c.min(), c.max()) for c in pqw)
+        idx_lims = (
+                (np.searchsorted(c, l[0], side='left') - 1,
+                 np.searchsorted(c, l[1]))
+                for c, l in zip(self.pqw, lims)
+            )
+        lims = [(max(lim[0]-extra, 0), min(lim[1]+extra, gs))
+                for lim, gs in zip(idx_lims, self.grid_size)]
+        return tuple(slice(s, e) for s, e in lims)
+
+    def fix_slc(self, slc):
+        if slc == Ellipsis:
+            slc = (slice(None),) * 3
+        result = []
+        for s, n in zip(slc, self.grid_size):
+            if np.isscalar(s):
+                result.append(s)
+            else:
+                result.append(slice(
+                    max(s.start, 0) if s.start is not None else 0,
+                    min(s.stop, n) if s.stop is not None else n,
+                    s.step))
+        return tuple(result)
+
+    def _slc_intersection1(self, slc1, slc2, size):
+        if np.isscalar(slc1):
+            if np.isscalar(slc2):
+                if slc1 != slc2:
+                    return slice(1, 0)
+                else:
+                    return slc1
+            else:
+                s = slc2.start if slc2.start is not None else 0
+                e = slc2.stop if slc2.stop is not None else size
+                st = slc2.step if slc2.step is not None else 1
+                if slc1 < e and slc1 >= s and (slc1 - s) // st == 0:
+                    return slc1
+                else:
+                    return slice(1, 0)
+        elif np.isscalar(slc2):
+            return self._slc_intersection1(slc2, slc1, size)
+        else:
+            s1 = slc1.start if slc1.start is not None else 0
+            e1 = slc1.stop if slc1.stop is not None else size
+            st1 = slc1.step if slc1.step is not None else 1
+
+            s2 = slc2.start if slc2.start is not None else 0
+            e2 = slc2.stop if slc2.stop is not None else size
+            st2 = slc2.step if slc2.step is not None else 1
+
+            if st1 == 1 and st2 == 1:
+                return slice(max(s1, s2), min(e1, e2))
+
+            gcd = np.gcd(st1, st2)
+            diff = s2 - s1
+            if diff % gcd != 0:
+                return slice(1, 0)
+            m1 = int(st1 // gcd)
+            m2 = int(st2 // gcd)
+            x = diff // gcd * m1 * pow(m1, -1, m2)
+            x = x % (m1*m2)
+            return slice(x*gcd+s1, min(e1, e2), st1*st2//gcd)
+
+    def slc_intersection(self, slc1, slc2):
+        return tuple(
+                self._slc_intersection1(s1, s2, n)
+                for s1, s2, n in zip(self.fix_slc(slc1), self.fix_slc(slc2), self.grid_size))
 
     def _save_xyz(self, data_type, xyz=None):
         if not os.path.exists(os.path.join(self.path, 'grid.npz')):
@@ -398,13 +543,8 @@ class Mesh:
             are applied.
         """
         self.auto_load = False
-        if slices is None:
-            self.slices = tuple([slice(None)] * 3)
-        else:
-            self.slices = tuple(slices)
-        self.slice_for_nc = tuple(self.slices[::-1])
-        #print(self.slice_for_nc)
 
+        self.config : Config = None
         if isinstance(conf, str):
             self.config = Config(conf, dont_save)
         elif isinstance(conf, Config):
@@ -412,9 +552,18 @@ class Mesh:
         else:
             raise TypeError('conf must be a str or Config')
 
+        if slices is None or slices == Ellipsis:
+            self.slices = tuple([slice(None)] * 3)
+        else:
+            self.slices = tuple(slices)
+        self.slices = self.config.fix_slc(self.slices)
+        self.slice_for_nc = tuple(self.slices[::-1])
+
         self.auto_load = auto_load
         self.path = self.config.path
         self.nframes = self.config.nframes
+
+        self.trans_op = SlcTranspose(self.slice_for_nc)
 
         use_saved = None
         if recalc_grid:
@@ -422,11 +571,11 @@ class Mesh:
         self.x, self.y, self.z = self.config.to_xyz(self.slices, data_type=data_type, use_saved=recalc_grid)
 
         self.xyz_for_mesh = [
-                self.x.transpose(2, 1, 0),
-                self.y.transpose(2, 1, 0),
-                self.z.transpose(2, 1, 0)]
+                self.trans_op(self.x, 2, 1, 0),
+                self.trans_op(self.y, 2, 1, 0),
+                self.trans_op(self.z, 2, 1, 0)]
 
-        self.nx, self.ny, self.nz = self.x.shape
+        self.nx, self.ny, self.nz = self.config.slice_size(self.slices)
 
         try_ref_fn = os.path.join(self.path, 'ref.nc')
         if ref_fn is None and os.path.exists(try_ref_fn):
@@ -435,9 +584,9 @@ class Mesh:
             ds = netCDF4.Dataset(ref_fn)
             concarEc = []
             for i in range(9):
-                concarEc.append(ds.variables['onarE' + str(i+1)][self.slice_for_nc].transpose(2, 1, 0))
-            concarEc = np.array(concarEc).reshape((3, 3) + concarEc[0].shape).transpose(2, 3, 4, 1, 0)
-            self.concarEc = concarEc
+                concarEc.append(ds.variables['onarE' + str(i+1)][self.slice_for_nc])
+            concarEc = np.array(concarEc).reshape((3, 3) + concarEc[0].shape)
+            self.concarEc = self.trans_op(concarEc, 4, 3, 2, 0, 1)
         else:
             self.concarEc = None
 
@@ -532,16 +681,15 @@ class Mesh:
                 continue
             if var_name in ds.variables:
                 self._free_space(1)
-                self.arrays[store_name] = ds.variables[var_name][self.slice_for_nc].transpose(2, 1, 0)
+                self.arrays[store_name] = self.trans_op(ds.variables[var_name][self.slice_for_nc], 2, 1, 0)
             elif var_name + 'x' in ds.variables:
                 self._free_space(3)
                 data = []
                 axis_names = ['x', 'y', 'z']
                 for i in range(3):
-                    #data.append(ds.variables[var_name + axis_names[i]][self.slice_for_nc].transpose(2, 1, 0))
                     data.append(ds.variables[var_name + axis_names[i]][self.slice_for_nc])
-                #data = np.stack(data).transpose(1, 2, 3, 0)
-                data = np.stack(data).transpose(3, 2, 1, 0)
+                #data = np.stack(data).transpose(3, 2, 1, 0)
+                data = self.trans_op(np.stack(data), 3, 2, 1, 0)
                 self.arrays[store_name] = self._convert_vec(data)
             else:
                 raise ValueError('Variable ' + var_name + ' not found in ' + fn)
