@@ -160,7 +160,7 @@ class Units:
         self.q = self.m / (self.t * self.B)  # m dv/dt ~ q v \times B
         self.N = N0
 
-        self.T = self.m * self.v**2
+        self.T = self.m * self.v**2 / C.k
 
         self.Re = Re
 
@@ -506,7 +506,7 @@ class Mesh:
             dont_save=None,
             ref_fn=None, recalc_grid=False,
             max_arrays=None, max_memory=4e9, data_type='float32',
-            auto_load=False, slices=None):
+            auto_load=True, slices=None):
         """
         Parameters
         ----------
