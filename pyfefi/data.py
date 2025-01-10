@@ -156,8 +156,9 @@ class Units:
         self.V = self.v
 
         self.E = self.v * self.B  # E ~ v \times B
-        self.J = self.B / self.L / C.mu_0  # J ~ 1/mu_0 * \nabla B
+        #self.J = self.B / self.L / C.mu_0  # J ~ 1/mu_0 * \nabla B
         self.q = self.m / (self.t * self.B)  # m dv/dt ~ q v \times B
+        self.J = self.q / self.t / self.L**-2
         self.N = N0
 
         self.T = self.m * self.v**2 / C.k
