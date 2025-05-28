@@ -15,8 +15,8 @@ if (NOT pybind11_FOUND)
     include(FetchContent)
     FetchContent_Declare(
         pybind11
-        URL    https://github.com/pybind/pybind11/archive/refs/tags/v2.11.1.zip
-        URL_HASH MD5=c62d9e05243bd31cdb3bae1bb2f56655
+        URL    https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.zip
+        URL_HASH MD5=671deeeaccfccd7c0389e43237c71cf3
         TLS_VERIFY true
         )
     FetchContent_MakeAvailable(pybind11)
@@ -31,7 +31,7 @@ if (NOT tuple_arithmetic_FOUND)
     FetchContent_Declare(
         tuple_arithmetic
         GIT_REPOSITORY https://github.com/Sauron-1/tuple_arithmetic.git
-        GIT_TAG        05be75e86ae7dc396217faa05d29f9af4c172a6f
+        GIT_TAG        547ebd0b978d6542431363c4f5460b58cc708ef6
         )
     set(BULID_TESTS_TMP ${BUILD_TESTS})
     set(BUILD_TESTS OFF)
