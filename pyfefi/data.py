@@ -426,7 +426,7 @@ class Config:
         idx_lims = (
                 (np.searchsorted(c, l[0], side='left') - 1,
                  np.searchsorted(c, l[1]))
-                for c, l in zip(self.pqw, lims)
+                for c, l in zip(self.pqw(), lims)
             )
         lims = [(max(lim[0]-extra, 0), min(lim[1]+extra, gs))
                 for lim, gs in zip(idx_lims, self.grid_size)]
