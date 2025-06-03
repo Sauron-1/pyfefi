@@ -492,6 +492,8 @@ class Config:
 
     def _save_xyz(self, data_type, xyz=None):
         if not os.path.exists(os.path.join(self.path, 'grid.npz')):
+            if not os.access(self.path, os.W_OK):
+                return
             if xyz is None:
                 x, y, z = self.calc_xyz((slice(None), slice(None), slice(None)), data_type)
             else:
