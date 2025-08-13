@@ -24,7 +24,7 @@ class MeshCore {
             std::array<const Real*, 3> coords {
                 x.data(), y.data(), z.data() };
             size_t size = x.size();
-            search_tree = SearchTree<Real>(coords, size);
+            auto search_tree = SearchTree<Real>(coords, size);
 
             for (auto i = 0; i < 3; ++i) {
                 for (auto j = 0; j < 2; ++j)

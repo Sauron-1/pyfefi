@@ -1,7 +1,6 @@
 #include <array>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
-#include <stdexcept>
 #include <type_traits>
 
 #include <iostream>
@@ -110,31 +109,31 @@ class NdArray {
 
         template<typename...I>
             requires( std::is_integral_v<I> && ...)
-        INLINE T& operator()(I...indices) {
+        FORCE_INLINE T& operator()(I...indices) {
             return data_[index(indices...)];
         }
 
         template<typename...I>
             requires( std::is_integral_v<I> && ...)
-        INLINE const T& operator()(I...indices) const {
+        FORCE_INLINE const T& operator()(I...indices) const {
             return data_[index(indices...)];
         }
 
-        INLINE T& get(std::array<size_t, N> arr) {
+        FORCE_INLINE T& get(std::array<size_t, N> arr) {
             return data_[index_impl(arr)];
         }
-        INLINE const T& get(std::array<size_t, N> arr) const {
+        FORCE_INLINE const T& get(std::array<size_t, N> arr) const {
             return data_[index_impl(arr)];
         }
 
         template<typename...I>
             requires( std::is_integral_v<I> && ...)
-        INLINE size_t index(I...indices) const {
+        FORCE_INLINE size_t index(I...indices) const {
             static_assert(sizeof...(I) == N, "Wrong number of indices");
             return index_impl(std::array<size_t, N>{size_t(indices)...});
         }
 
-        INLINE size_t index_impl(std::array<size_t, N> indices) const {
+        FORCE_INLINE size_t index_impl(std::array<size_t, N> indices) const {
 #if defined(BOUNDSCHECK)
             check_bounds(indices);
 #endif
@@ -149,7 +148,7 @@ class NdArray {
          * SIMD version of operator().
          */
         template<typename...Isimd>
-        INLINE auto gather(Isimd...indices) const {
+        FORCE_INLINE auto gather(Isimd...indices) const {
             static_assert(sizeof...(Isimd) == N, "Wrong number of indices");
             using first_type = std::tuple_element_t<0, std::tuple<Isimd...>>;
             // Check that all indices are convertible to first_type
@@ -162,40 +161,38 @@ class NdArray {
          * SIMD version of operator().
          */
         template<typename Isimd>
-        INLINE auto gather_impl(std::array<Isimd, N> indices) const {
+        FORCE_INLINE auto gather_impl(std::array<Isimd, N> indices) const {
 #if defined(BOUNDSCHECK)
             check_bounds(indices);
 #endif
             constexpr size_t simd_len = sizeof(Isimd) / sizeof(decltype(indices[0][0]));
-            using simd_type = simd_type_t<Scalar, simd_len>;
+            using simd_type = simd::vec<Scalar, simd_len>;
             simd_type result;
-            std::array<Scalar, simd_len> tmp;
             Isimd idx = 0;
             for (size_t i = 0; i < N; ++i) {
                 idx += indices[i] * strides_[i];
             }
             for (size_t i = 0; i < simd_len; ++i) {
-                tmp[i] = data_[idx[i]];
+                result[i] = data_[idx[i]];
             }
-            result.load(tmp.data());
             return result;
         }
 
-        INLINE const auto& shape() const {
+        FORCE_INLINE const auto& shape() const {
             return shape_;
         }
-        INLINE size_t shape(size_t i) const {
+        FORCE_INLINE size_t shape(size_t i) const {
             return shape_[i];
         }
-        INLINE const auto& strides() const { return strides_; }
-        INLINE auto data() const { return data_; }
+        FORCE_INLINE const auto& strides() const { return strides_; }
+        FORCE_INLINE auto data() const { return data_; }
 
-        INLINE size_t size() const {
+        FORCE_INLINE size_t size() const {
             return shape_[0] * strides_[0];
         }
 
         template<int op_flag = 0, typename Simd, typename...Isimd>
-        INLINE auto scatter(Simd values, Isimd...indices) {
+        FORCE_INLINE auto scatter(Simd values, Isimd...indices) {
             static_assert(sizeof...(Isimd) == N, "Wrong number of indices");
             using first_type = std::tuple_element_t<0, std::tuple<Isimd...>>;
             static_assert((std::is_convertible_v<Isimd, first_type> && ...),
@@ -204,7 +201,7 @@ class NdArray {
         }
 
         template<int op_flag, typename Simd, typename Isimd>
-        INLINE auto scatter_impl(Simd values, std::array<Isimd, N> indices) {
+        FORCE_INLINE auto scatter_impl(Simd values, std::array<Isimd, N> indices) {
 #if defined(BOUNDSCHECK)
             check_bounds(indices);
 #endif
@@ -222,7 +219,7 @@ class NdArray {
         }
 
         template<int op_flag = 0, typename Simd, typename Bsimd, typename...Isimd>
-        INLINE auto scatterm(Simd values, Bsimd msk, Isimd...indices) {
+        FORCE_INLINE auto scatterm(Simd values, Bsimd msk, Isimd...indices) {
             static_assert(sizeof...(Isimd) == N, "Wrong number of indices");
             using first_type = std::tuple_element_t<0, std::tuple<Isimd...>>;
             static_assert((std::is_convertible_v<Isimd, first_type> && ...),
@@ -231,7 +228,7 @@ class NdArray {
         }
 
         template<int op_flag, typename Simd, typename Bsimd, typename Isimd>
-        INLINE auto scatterm_impl(Simd values, Bsimd msk, std::array<Isimd, N> indices) {
+        FORCE_INLINE auto scatterm_impl(Simd values, Bsimd msk, std::array<Isimd, N> indices) {
 #if defined(BOUNDSCHECK)
             check_bounds(indices);
 #endif
@@ -267,7 +264,7 @@ class NdArray {
 
         template<typename iSimd>
         void check_bounds(std::array<iSimd, N> idx) const {
-            constexpr size_t simd_len = simd_length<iSimd>;
+            constexpr size_t simd_len = iSimd::width;
             for (size_t i = 0; i < N; ++i) {
                 auto msk = idx[i] >= shape_[i] || idx[i] < 0;
                 if (horizontal_or(msk)) [[unlikely]] {
@@ -301,7 +298,7 @@ template<size_t N>
 class NdIndices {
 
     public:
-        INLINE NdIndices(std::array<size_t, N> shape): shape_(shape) {
+        FORCE_INLINE NdIndices(std::array<size_t, N> shape): shape_(shape) {
             size_ = 1;
             index_ = 0;
             for (auto i = 0; i < N; ++i) {
@@ -310,11 +307,11 @@ class NdIndices {
             }
         }
 
-        INLINE size_t size() const {
+        FORCE_INLINE size_t size() const {
             return size_;
         }
 
-        INLINE std::array<size_t, N> next() {
+        FORCE_INLINE std::array<size_t, N> next() {
             index_ += 1;
             std::array<size_t, N> ret = state_;
             for (auto i = 0; i < N; ++i) {
@@ -330,8 +327,8 @@ class NdIndices {
         }
 
         template<typename iSimd>
-        INLINE auto next_batch() {
-            constexpr size_t simd_len = simd_length<iSimd>;
+        FORCE_INLINE auto next_batch() {
+            constexpr size_t simd_len = iSimd::width;
             using Int = decltype(std::declval<iSimd>()[0]);
             std::array<std::array<Int, simd_len>, N> buf;
             std::array<Int, simd_len> msk_buf;
@@ -355,17 +352,17 @@ class NdIndices {
             return std::make_pair(msk != 0, result);
         }
 
-        INLINE bool has_next() {
+        FORCE_INLINE bool has_next() {
             return index_ < size_;
         }
 
         template<typename iSimd>
-        INLINE bool has_next_full() {
-            constexpr size_t simd_len = simd_length<iSimd>;
+        FORCE_INLINE bool has_next_full() {
+            constexpr size_t simd_len = iSimd::width;
             return index_ + simd_len < size_;
         }
 
-        INLINE auto i2idx(size_t i) {
+        FORCE_INLINE auto i2idx(size_t i) {
             std::array<size_t, N> ret;
             for (auto j = 0; j < N; ++j) {
                 auto idx = N - j - 1;
@@ -377,7 +374,7 @@ class NdIndices {
 
         template<typename iSimd>
             requires(not std::is_scalar_v<iSimd>)
-        INLINE auto i2idx(iSimd i) {
+        FORCE_INLINE auto i2idx(iSimd i) {
             std::array<iSimd, N> ret;
             for (auto j = 0; j < N; ++j) {
                 auto idx = N - j - 1;
@@ -394,17 +391,12 @@ class NdIndices {
         size_t size_, index_;
 
         template<typename iSimd,  typename OpType>
-        INLINE auto div_mod(iSimd i, OpType op) {
+        FORCE_INLINE auto div_mod(iSimd i, OpType op) {
             using Int = decltype(i[0]);
-            constexpr size_t simd_len = simd_length<iSimd>;
-            std::array<Int, simd_len> div_buf, mod_buf;
-            for (Int j = 0; j < simd_len; ++j) {
-                div_buf[j] = i[j] / op;
-                mod_buf[j] = i[j] % op;
-            }
+            constexpr size_t simd_len = iSimd::width;
             iSimd div, mod;
-            div.load(div_buf.data());
-            mod.load(mod_buf.data());
+            div = i / op;
+            mod = i % op;
             return std::make_pair(div, mod);
         }
 };

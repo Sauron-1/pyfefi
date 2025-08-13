@@ -20,7 +20,9 @@ print(np.max(Vx))
 #X, Y = np.meshgrid(x, x, indexing='ij')
 
 delta = delta.astype(np.float64)
+print('Building line tracer...', end='')
 lt = LineTracer2(Vx, Vy, delta, np.zeros(2))
+print('Done')
 
 plt.pcolormesh(X, Y, u)
 #plt.streamplot(x, y, Vx.T, Vy.T)
@@ -47,7 +49,11 @@ else:
         inits.append([factor*np.pi/3, factor*np.pi/3])
     inits = np.array(inits)
 
-    ls = lt.trace_many(inits, max_step=100, term_val=1e-9, tol_rel=1e-4, tol=1e-4)
+    for i, init in enumerate(inits):
+        l0 = lt.trace(init, max_step=100, term_val=1e-9, tol_rel=1e-4, tol=1e-4, max_iter=500)
+    print('Starting trace')
+    ls = lt.trace_many(inits, max_step=100, term_val=1e-9, tol_rel=1e-4, tol=1e-4, max_iter=500)
+    print('Trace done')
     #roots = lt.find_roots(inits, max_step=1e-1, term_val=1e-5, tol_rel=1e-5)
     #print(roots)
     for i in range(len(inits)):
@@ -58,4 +64,5 @@ else:
 
     plt.xlim(x[0], x[-1])
     plt.ylim(y[0], y[-1])
+    plt.savefig('test.png')
     plt.show()

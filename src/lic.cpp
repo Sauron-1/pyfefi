@@ -1,6 +1,4 @@
 #include <array>
-#include <type_traits>
-#include <vectorclass/vectorclass.h>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
@@ -10,7 +8,7 @@
 #include <simd.hpp>
 
 template<typename Simd, typename iSimd, typename...Arr>
-static INLINE auto interp_one_2d_2(
+FORCE_INLINE static auto interp_one_2d_2(
         std::array<Simd, 2> pos,
         std::array<iSimd, 2> idx,
         const Arr&...arr) {
@@ -32,7 +30,7 @@ static INLINE auto interp_one_2d_2(
     for (auto ix = 0; ix < 2; ++ix) {
         for (auto iy = 0; iy < 2; ++iy) {
             auto w = weights[0][ix] * weights[1][iy];
-            constexpr_for<0, sizeof...(arr), 1>( [&](auto I) {
+            simd::constexpr_for<0, sizeof...(arr), 1>( [&](auto I) {
                 constexpr auto i = decltype(I)::value;
                 auto val = std::get<i>(arrs).gather(
                         indices[0][ix], indices[1][iy]);
@@ -48,10 +46,11 @@ template<typename Float>
 class LicPack {
 
     public:
-        using Simd = native_simd_t<Float>;
-        using iSimd = typename isimd_type<Simd>::type;
-        using bSimd = typename bsimd_type<Simd>::type;
-        using ibSimd = typename bsimd_type<iSimd>::type;
+        constexpr static size_t simd_width = simd::simd_width_v<Float>;
+        using Simd = simd::vec<Float, simd_width>;
+        using iSimd = simd::vec<simd::int_of_t<Float>, simd_width>;
+        using bSimd = typename Simd::vec_bool_t;
+        using ibSimd = typename iSimd::vec_bool_t;
 
         INLINE LicPack(
                 std::array<iSimd, 2> _idx,
@@ -72,7 +71,7 @@ class LicPack {
             Simd vx, vy;
             if constexpr (not acc_only) {
                 auto [ui, vi, ti] = interp_one_2d_2(pos, idx, u, v, texture);
-                result = if_add(msk, result, ti * kernel(kidx));
+                result = select(msk, result + ti*kernel(kidx), result);
                 vx = ui * sign;
                 vy = vi * sign;
             }
@@ -85,15 +84,15 @@ class LicPack {
                  by = select(vy > 0, Simd(1), Simd(0));
             auto mskx = abs(vx) > 1e-20,
                  msky = abs(vy) > 1e-20;
-            msk &= mskx | msky;
+            msk = msk && (mskx || msky);
             auto tx = select(mskx, (bx - pos[0]) / vx, 1e21),
                  ty = select(msky, (by - pos[1]) / vy, 1e21);
 
             auto if_use_tx = tx < ty;
             auto t = select(tx < ty, tx, ty);
 
-            idx[0] = if_add( ibSimd(if_use_tx), idx[0], select(ibSimd(vx > 0), iSimd(1), iSimd(-1)));
-            idx[1] = if_add(!ibSimd(if_use_tx), idx[1], select(ibSimd(vy > 0), iSimd(1), iSimd(-1)));
+            idx[0] = select( simd::to_intb(if_use_tx), idx[0] + select(simd::to_intb(vx > 0), iSimd(1), iSimd(-1)), idx[0]);
+            idx[1] = select(!simd::to_intb(if_use_tx), idx[1] + select(simd::to_intb(vy > 0), iSimd(1), iSimd(-1)), idx[1]);
 
             pos[0] = select( if_use_tx, 1.0 - bx, t * vx + pos[0]);
             pos[1] = select(!if_use_tx, 1.0 - by, t * vy + pos[1]);
@@ -103,8 +102,8 @@ class LicPack {
 
         INLINE auto limit_idx() {
             for (auto i = 0; i < 2; ++i) {
-                msk &= (idx[i] >= 0) & (idx[i] < shape[i] - 1);
-                idx[i] = select(ibSimd(msk), idx[i], 0);
+                msk = msk && to_floatb(idx[i] >= 0) && to_floatb(idx[i] < shape[i] - 1);
+                idx[i] = select(to_intb(msk), idx[i], 0);
             }
         }
 
@@ -142,7 +141,7 @@ class LicPack {
 
 template<int simd_len_init = -1, typename Simd>
 void print_simd(Simd val) {
-    constexpr size_t simd_len = simd_len_init > 0 ? simd_len_init : simd_length<Simd>;
+    constexpr size_t simd_len = simd_len_init > 0 ? simd_len_init : Simd::width;
     std::cout << "(";
     for (auto i = 0; i < simd_len - 1; ++i) {
         std::cout << val[i] << ", ";
@@ -157,8 +156,9 @@ static auto lic_kernel(
         const NdArray<Float, 2>& texture,
         const NdArray<Float, 1>& kernel,
         NdArray<Float, 2>& results) {
-    using Simd = native_simd_t<Float>;
-    using iSimd = typename isimd_type<Simd>::type;
+    static constexpr size_t width = simd::simd_width_v<Float>;
+    using Simd = simd::vec<Float, width>;
+    using iSimd = simd::vec<simd::int_of_t<Float>, width>;
 
     NdIndices nd(results.shape());
     while (nd.has_next()) {
@@ -175,22 +175,21 @@ static auto lic_kernel_para(
         const NdArray<Float, 2>& texture,
         const NdArray<Float, 1>& kernel,
         NdArray<Float, 2>& results) {
-    using Simd = native_simd_t<Float>;
-    using iSimd = typename isimd_type<Simd>::type;
-    using bSimd = typename bsimd_type<Simd>::type;
-    using Int = decltype(std::declval<iSimd>()[0]);
-    constexpr size_t simd_len = simd_length<Simd>;
+    static constexpr size_t simd_len = simd::simd_width_v<Float>;
+    using Int = simd::int_of_t<Float>;
+    using Simd = simd::vec<Float, simd_len>;
+    using iSimd = simd::vec<Int, simd_len>;
+    using bSimd = typename Simd::vec_bool_t;
     NdIndices nd(results.shape());
     size_t num_packs = nd.size() / simd_len;
 //#pragma omp parallel for
     for (auto i = 0; i < num_packs; ++i) {
         std::array<Int, simd_len> buf;
-        bSimd msk = true;
+        bSimd msk{true};
         iSimd idx;
         for (auto j = 0; j < simd_len; ++j) {
-            buf[j] = i * simd_len + j;
+            idx[j] = i * simd_len + j;
         }
-        idx.load(buf.data());
         auto indices = nd.i2idx(idx);
         auto result = LicPack(indices, msk, u, v, texture, kernel).run();
         results.scatter(result, indices[0], indices[1]);
@@ -200,16 +199,16 @@ static auto lic_kernel_para(
     size_t extra_start = nd.size() - extra;
     if (extra == 0) return;
 
-    std::array<Int, simd_len> buf;
-    for (auto i = 0; i < extra; ++i) buf[i] = 1;
-    for (auto i = extra; i < simd_len; ++i) buf[i] = 0;
-    iSimd msk_tmp; msk_tmp.load(buf.data());
+    iSimd msk_tmp;
+    for (auto i = 0; i < extra; ++i) msk_tmp[i] = 1;
+    for (auto i = extra; i < simd_len; ++i) msk_tmp[i] = 0;
+
+    iSimd idx;
     auto msk = msk_tmp == 1;
-    for (auto i = 0; i < extra; ++i) buf[i] = extra_start + i;
-    for (auto i = extra; i < simd_len; ++i) buf[i] = nd.size() - 1;
-    iSimd idx; idx.load(buf.data());
+    for (auto i = 0; i < extra; ++i) idx[i] = extra_start + i;
+    for (auto i = extra; i < simd_len; ++i) idx[i] = nd.size() - 1;
     auto indices = nd.i2idx(idx);
-    auto result = LicPack(indices, msk, u, v, texture, kernel).run();
+    auto result = LicPack(indices, to_floatb(msk), u, v, texture, kernel).run();
     results.scatterm(result, msk, indices[0], indices[1]);
 }
 

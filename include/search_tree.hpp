@@ -5,7 +5,7 @@
 #include <simd.hpp>
 
 template<typename Real>
-auto INLINE min_max(Real* a, size_t len) {
+FORCE_INLINE auto min_max(Real* a, size_t len) {
     Real min = a[0], max = a[0];
     for (size_t i = 1; i < len; ++i) {
         if (a[i] < min) min = a[i];
@@ -40,15 +40,15 @@ struct SmallStack {
 
     SmallStack() : top(-1) {}
 
-    INLINE void push(T info) {
+    FORCE_INLINE void push(T info) {
         stack[++top] = info;
     }
 
-    INLINE T pop() {
+    FORCE_INLINE T pop() {
         return stack[top--];
     }
 
-    INLINE bool empty() {
+    FORCE_INLINE bool empty() {
         return top == -1;
     }
 
@@ -75,7 +75,7 @@ class SearchTree {
             }
 
             SmallStack<IterInfo<Real>> stack;
-            stack.push({0, len, -1, 0, min, max});
+            stack.push({0, len, -1, 0, mins, maxs});
 
             int node_idx = 0;
             while(not stack.empty()) {
@@ -90,8 +90,8 @@ class SearchTree {
                 std::array<Real, 3> min1 = info.min, max1 = info.max;
                 min1[ax] = val;
                 max1[ax] = val;
-                IterInfo<Real> info1 = {info.start, pivot, node_idx, 1, min, max1},
-                               info2 = {pivot + 1, info.end, node_idx, 0, min1, max};
+                IterInfo<Real> info1 = {info.start, pivot, node_idx, 1, mins, max1},
+                               info2 = {pivot + 1, info.end, node_idx, 0, min1, maxs};
                 if (info1.end - info1.start > info2.end - info2.start) {
                     stack.push(info1);
                     stack.push(info2);

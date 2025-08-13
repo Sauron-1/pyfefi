@@ -1,5 +1,4 @@
 #include <cmath>
-#include <vector>
 #include <numbers>
 
 #include <pybind11/pytypes.h>
@@ -7,12 +6,12 @@
 #include <ndarray.hpp>
 
 template<typename Real>
-static Real INLINE fgrid(Real p) {
+FORCE_INLINE static Real fgrid(Real p) {
     return (0.11 * p - std::erf((p-10.0)/12.0) - erf((p+10.0)/12.0)) * 100.0*2.0/4.0/0.44;
 }
 
 template<typename Real>
-static Real INLINE fgrid_diff(Real p) {
+FORCE_INLINE static Real fgrid_diff(Real p) {
     Real e1 = (p - 10.0) / 12.0,
          e2 = (p + 10.0) / 12.0;
     return 100.0*2.0/4.0/0.44 * (0.11 - 1.0/6.0/std::sqrt(std::numbers::pi_v<Real>) *
@@ -20,7 +19,7 @@ static Real INLINE fgrid_diff(Real p) {
 }
 
 template<typename Real>
-static Real INLINE solve_grid(Real x) {
+FORCE_INLINE static Real solve_grid(Real x) {
     Real tol = 1e-6;
     int max_step = 100;
     Real p = 2;

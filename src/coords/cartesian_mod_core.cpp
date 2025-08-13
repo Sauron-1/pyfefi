@@ -8,7 +8,6 @@
 #include <pybind11/pytypes.h>
 #include <vector>
 #include <cmath>
-#include <iostream>
 
 template<typename Real>
 static inline Real mytanh(Real x, Real x0, Real d, Real a1, Real a2) {

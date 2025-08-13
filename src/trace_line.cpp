@@ -70,7 +70,7 @@ class LineTracer {
         LineTracer(const py::array_t<Arr, py::array::forcecast>&...arrs) {
             auto args = std::tie(arrs...);
             auto args1 = tpa::firstN<N>(args);
-            constexpr_for<0, N, 1>([this, &args1](auto I) {
+            simd::constexpr_for<0, N, 1>([this, &args1](auto I) {
                 m_data[I] = NdArray<T, N>(std::get<I>(args1));
             });
 
@@ -212,6 +212,8 @@ class LineTracer {
             std::vector<py::array_t<T>> results(num_points);
 #pragma omp parallel for schedule(TRACE_LINE_OMP_SHEDULE) default(shared)
             for (auto i = 0; i < num_points; ++i) {
+                int tid = omp_get_thread_num();
+                int my_num;
                 auto result = bidir_trace(coords[i], cfg, [this, term_val](auto& pos) { return terminate(pos, term_val); });
                 //results[i] = to_numpy(result);
                 copy_to_numpy(result, results[i]);
