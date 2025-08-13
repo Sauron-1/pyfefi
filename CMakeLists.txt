@@ -9,54 +9,9 @@ option(USE_OPENMP ON)
 
 message("-- Compile for CPU ${MARCH}")
 
-find_package(pybind11 QUIET)
-if (NOT pybind11_FOUND)
-    message("-- pybind11 not found. Downloading...")
-    include(FetchContent)
-    FetchContent_Declare(
-        pybind11
-        URL    https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.zip
-        URL_HASH MD5=671deeeaccfccd7c0389e43237c71cf3
-        TLS_VERIFY true
-        )
-    FetchContent_MakeAvailable(pybind11)
-else()
-    message("-- Found pybind11 ${pybind11_VERSION}: ${pybind11_INCLUDE_DIRS}")
-endif()
-
-find_package(tuple_arithmetic QUIET)
-if (NOT tuple_arithmetic_FOUND)
-    message("-- tuple_arithmetic not found. Downloading...")
-    include(FetchContent)
-    FetchContent_Declare(
-        tuple_arithmetic
-        GIT_REPOSITORY https://github.com/Sauron-1/tuple_arithmetic.git
-        GIT_TAG        547ebd0b978d6542431363c4f5460b58cc708ef6
-        )
-    set(BULID_TESTS_TMP ${BUILD_TESTS})
-    set(BUILD_TESTS OFF)
-    FetchContent_MakeAvailable(tuple_arithmetic)
-    set(BUILD_TESTS ${BULID_TESTS_TMP})
-else()
-    message("-- Found tuple_arithmetic ${tuple_arithmetic_VERSION}: ${tuple_arithmetic_INCLUDE_DIRS}")
-endif()
-
-find_package(picinterp QUIET)
-if (NOT picinterp_FOUND)
-    message("-- picinterp not found. Downloading...")
-    include(FetchContent)
-    FetchContent_Declare(
-        picinterp
-        GIT_REPOSITORY https://github.com/Sauron-1/picinterp.git
-        GIT_TAG        63d2955a2305229146997d7b5320fed93cf0d932
-        )
-    set(BULID_TESTS_TMP ${BUILD_TESTS})
-    set(BUILD_TESTS OFF)
-    FetchContent_MakeAvailable(picinterp)
-    set(BUILD_TESTS ${BULID_TESTS_TMP})
-else()
-    message("-- Found picinterp ${picinterp_VERSION}: ${picinterp_INCLUDE_DIRS}")
-endif()
+add_subdirectory(thirdparty/pybind11)
+add_subdirectory(thirdparty/tuple_arithmetic)
+add_subdirectory(thirdparty/picinterp)
 
 if (USE_OPENMP)
     find_package(OpenMP REQUIRED)
