@@ -9,9 +9,15 @@ option(USE_OPENMP ON)
 
 message("-- Compile for CPU ${MARCH}")
 
-add_subdirectory(thirdparty/pybind11)
-add_subdirectory(thirdparty/tuple_arithmetic)
-add_subdirectory(thirdparty/picinterp)
+if (NOT TARGET pybind11)
+    add_subdirectory(thirdparty/pybind11)
+endif()
+if (NOT TARGET tuple_arithmetic)
+    add_subdirectory(thirdparty/tuple_arithmetic)
+endif()
+if (NOT TARGET picinterp)
+    add_subdirectory(thirdparty/picinterp)
+endif()
 
 if (USE_OPENMP)
     find_package(OpenMP REQUIRED)
