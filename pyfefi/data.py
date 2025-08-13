@@ -132,6 +132,7 @@ class Units:
         B0 = np.linalg.norm(sw_info[:3]) * 1e-9
         Vsw = sw_info[3:6]
         N0 = sw_info[6]*1e6
+        Tsw = sw_info[7] * (C.e/C.k)
         Re = 6371e3
 
         omega_i = B0 * (C.e / C.m_p)
@@ -168,9 +169,10 @@ class Units:
 
         self.Neq = eq_info[3]
 
-        self.Vsw = Vsw[0] * 1e3
+        self.Vsw = np.linalg.norm(Vsw) * 1e3
         self.Nsw = N0
-        self.Ma = -Vsw[0] / Va * 1e3
+        self.Tsw = Tsw
+        self.Ma = -self.Vsw / Va * 1e3
         self.Bsw = np.array(sw_info[:3])*1e-9
         self.Va = Va
 
